@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ExtrudeFlow · Gestor de impresión 3D</title>
+<meta name="theme-color" content="#0d100e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ExtrudeFlow">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#0d100e;
+    --panel:#161a17;
+    --panel-2:#1e2320;
+    --line:#2a302c;
+    --ink:#eef2ef;
+    --ink-soft:#9aa39d;
+    --ink-faint:#697069;
+    --accent:#4ade80;
+    --accent-deep:#22c55e;
+    --accent-ink:#062011;
+    --warn:#fbbf24;
+    --danger:#f87171;
+    --radius:16px;
+    --radius-s:11px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    line-height:1.45;padding-bottom:96px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:0 16px}
+  header.app{
+    padding:22px 16px 14px;max-width:560px;margin:0 auto;
+    display:flex;align-items:baseline;gap:10px;
+  }
+  header.app h1{font-size:26px;margin:0;letter-spacing:-.5px;font-weight:800}
+  header.app .dot{color:var(--accent)}
+  header.app span.sub{color:var(--ink-faint);font-size:13px;margin-left:auto}
+
+  /* tab panels */
+  .view{display:none;animation:fade .18s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  .section-label{
+    color:var(--ink-faint);font-size:12.5px;font-weight:600;
+    text-transform:none;letter-spacing:0;margin:22px 2px 8px;
+  }
+  .card{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);overflow:hidden;
+  }
+  .row{
+    display:flex;align-items:center;gap:12px;
+    padding:14px 16px;border-bottom:1px solid var(--line);
+  }
+  .row:last-child{border-bottom:none}
+  .row .lbl{font-size:15.5px}
+  .row .lbl small{display:block;color:var(--ink-faint);font-size:12px;font-weight:400}
+  .row .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .muted{color:var(--ink-soft)}
+  .faint{color:var(--ink-faint)}
+
+  input,select{
+    font-family:inherit;font-size:15.5px;color:var(--ink);
+    background:#000;border:1px solid var(--line);border-radius:9px;
+    padding:9px 11px;outline:none;transition:border-color .15s;
+  }
+  input:focus,select:focus{border-color:var(--accent-deep)}
+  input.num{width:96px;text-align:right}
+  input.wide{width:100%}
+  select{background:#000;-webkit-appearance:none;appearance:none;padding-right:28px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%239aa39d' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>");
+    background-repeat:no-repeat;background-position:right 10px center}
+  .unit{color:var(--ink-faint);font-size:14px;min-width:20px}
+
+  .btn{
+    font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;
+    border:none;border-radius:11px;padding:12px 16px;
+    background:var(--accent);color:var(--accent-ink);transition:transform .08s,opacity .15s;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.block{width:100%}
+  .btn.sm{padding:8px 12px;font-size:13.5px}
+  .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+
+  .swatch{width:14px;height:14px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+  .colorgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;padding:16px}
+  .colorgrid button{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;justify-self:center;position:relative}
+  .colorgrid button.sel{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--accent)}
+
+  .list-item{
+    display:flex;align-items:center;gap:12px;padding:14px 16px;
+    border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s;
+  }
+  .list-item:last-child{border-bottom:none}
+  .list-item:active{background:var(--panel-2)}
+  .list-item .meta{flex:1;min-width:0}
+  .list-item .meta .t{font-size:15.5px;font-weight:600}
+  .list-item .meta .s{font-size:12.5px;color:var(--ink-faint)}
+  .list-item .val{text-align:right;font-size:14px}
+  .list-item .val b{color:var(--accent);font-weight:700}
+  .chev{color:var(--ink-faint);font-size:18px}
+
+  .empty{padding:34px 20px;text-align:center;color:var(--ink-faint);font-size:14px}
+
+  /* result block */
+  .result .row{padding:13px 16px}
+  .result .row .lbl{font-size:15px}
+  .result .row .amount{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px}
+  .result .row.total .lbl,.result .row.total .amount{font-weight:800;font-size:16.5px}
+  .result .row.sale{padding:16px}
+  .result .row.sale .lbl{font-weight:800;font-size:17px}
+  .result .row.sale .amount{color:var(--accent);font-weight:800;font-size:20px}
+
+  .hint{color:var(--ink-faint);font-size:12.5px;margin:8px 4px 0;line-height:1.5}
+
+  /* filament picker chips inside calc */
+  .fil-line{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .fil-line:last-of-type{border-bottom:1px solid var(--line)}
+  .fil-line select{flex:1;min-width:0}
+  .fil-line input{width:74px}
+  .fil-line .x{color:var(--ink-faint);cursor:pointer;font-size:20px;padding:2px 4px}
+
+  /* nav */
+  nav{
+    position:fixed;bottom:0;left:0;right:0;z-index:40;
+    background:rgba(13,16,14,.86);backdrop-filter:blur(16px);
+    border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    display:flex;max-width:560px;margin:0 auto;
+  }
+  nav button{
+    flex:1;background:none;border:none;color:var(--ink-faint);
+    font-family:inherit;font-size:11px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;
+    border-radius:12px;transition:color .15s;
+  }
+  nav button svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8}
+  nav button.active{color:var(--accent)}
+
+  /* modal */
+  .scrim{
+    position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  .scrim.show{display:flex}
+  .sheet{
+    background:var(--bg);width:100%;max-width:560px;
+    border-radius:20px 20px 0 0;border-top:1px solid var(--line);
+    max-height:92vh;overflow-y:auto;padding:8px 0 24px;
+    animation:up .22s cubic-bezier(.2,.8,.25,1);
+  }
+  @keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:translateY(0);opacity:1}}
+  .sheet .bar{display:flex;align-items:center;padding:10px 16px 6px}
+  .sheet .bar h3{margin:0;font-size:17px;font-weight:700}
+  .sheet .bar .close{margin-left:auto;background:none;border:none;color:var(--ink-soft);font-size:15px;cursor:pointer;padding:6px}
+  .grip{width:38px;height:4px;background:var(--line);border-radius:3px;margin:6px auto 0}
+
+  .toast{
+    position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:14px;
+    padding:11px 18px;border-radius:12px;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;z-index:60;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .pill{font-size:11px;font-weight:700;color:var(--accent);background:rgba(74,222,128,.12);padding:3px 9px;border-radius:20px}
+  .save-strip{padding:16px}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1>Extrude<span class="dot">Flow</span></h1>
+  <span class="sub" id="hdrSub">Gestor de impresión 3D</span>
+</header>
+
+<!-- ============ CALCULAR ============ -->
+<section class="view active" id="v-calc">
+  <div class="wrap">
+    <div class="section-label">Datos de la figura</div>
+    <div class="card">
+      <div class="row">
+        <input class="wide" id="c_name" placeholder="Nombre de la figura (ej. Llavero)">
+      </div>
+      <div class="row">
+        <div class="lbl">Tiempo de impresión</div>
+        <div class="right">
+          <input class="num" id="c_h" type="number" min="0" value="1" style="width:60px"><span class="unit">h</span>
+          <input class="num" id="c_m" type="number" min="0" max="59" value="0" style="width:60px"><span class="unit">min</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="lbl">Impresora</div>
+        <div class="right"><select id="c_printer"></select></div>
+      </div>
+    </div>
+
+    <div class="section-label">Filamentos</div>
+    <div class="card" id="c_filWrap"></div>
+    <div style="padding:10px 0"><button class="btn ghost sm" onclick="addFilLine()">+ Agregar filamento</button></div>
+
+    <div class="section-label">Ajustes de precio</div>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Merma <small>material desperdiciado</small></div>
+        <div class="right"><input class="num" id="c_merma" type="number" min="0" value="5" style="width:64px"><span class="unit">%</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Margen de ganancia</div>
+        <div class="right"><input class="num" id="c_margin" type="number" min="0" value="60" style="width:64px"><span class="unit">%</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Mano de obra <small>opcional</small></div>
+        <div class="right"><input class="num" id="c_labor" type="number" min="0" value="0" style="width:64px"><span class="unit" id="curLabor">$</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Costos extra <small>empaque, envío…</small></div>
+        <div class="right"><input class="num" id="c_extra" type="number" min="0" value="0" style="width:64px"><span class="unit" id="curExtra">$</span></div>
+      </div>
+    </div>
+
+    <div class="section-label">Resultado</div>
+    <div class="card result" id="c_result"></div>
+
+    <div class="save-strip" style="display:flex;gap:10px">
+      <button class="btn block" onclick="saveFigure()" id="saveBtn">Guardar figura</button>
+      <button class="btn ghost sm" onclick="resetCalc()">Limpiar</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FIGURAS GUARDADAS ============ -->
+<section class="view" id="v-figs">
+  <div class="wrap">
+    <div class="section-label">Figuras guardadas</div>
+    <div class="card" id="figList"></div>
+    <p class="hint">Toca una figura para volver a abrirla en la calculadora.</p>
+  </div>
+</section>
+
+<!-- ============ IMPRESORAS ============ -->
+<section class="view" id="v-printers">
+  <div class="wrap">
+    <div class="section-label">Impresoras</div>
+    <div class="card" id="printerList"></div>
+    <div style="padding:12px 0;display:flex;gap:10px">
+      <button class="btn block" onclick="openCatalog()">Elegir del catálogo</button>
+      <button class="btn ghost" onclick="openPrinter()" style="white-space:nowrap">+ Manual</button>
+    </div>
+    <p class="hint">El consumo (W) se usa junto al precio del kWh para calcular la electricidad de cada impresión. Los valores del catálogo son consumos promedio durante la impresión; para máxima precisión mide con un medidor y ajústalo.</p>
+  </div>
+</section>
+
+<!-- ============ FILAMENTOS ============ -->
+<section class="view" id="v-fils">
+  <div class="wrap">
+    <div class="section-label">Filamentos</div>
+    <div class="card" id="filStock"></div>
+    <div style="padding:12px 0;display:flex;gap:10px">
+      <button class="btn block" onclick="openFilCatalog()">Elegir del catálogo</button>
+      <button class="btn ghost" onclick="openFilament()" style="white-space:nowrap">+ Manual</button>
+    </div>
+    <p class="hint">El precio por gramo se calcula solo a partir del precio y peso del carrete. Los precios del catálogo son de referencia en tu moneda: ajústalos a lo que pagaste.</p>
+  </div>
+</section>
+
+<!-- ============ AJUSTES ============ -->
+<section class="view" id="v-settings">
+  <div class="wrap">
+    <div class="section-label">Moneda</div>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Símbolo de moneda</div>
+        <div class="right"><input class="num" id="s_cur" style="width:70px;text-align:center" maxlength="4"></div>
+      </div>
+    </div>
+
+    <div class="section-label">Costos globales</div>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Precio del kWh <small>según tu recibo de luz</small></div>
+        <div class="right"><input class="num" id="s_kwh" type="number" min="0" step="0.01" style="width:80px"><span class="unit" id="curKwh">$</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Costo por hora de máquina <small>desgaste + tu tiempo</small></div>
+        <div class="right"><input class="num" id="s_hour" type="number" min="0" step="0.5" style="width:80px"><span class="unit" id="curHour">$</span></div>
+      </div>
+    </div>
+    <p class="hint">El costo por hora es una tarifa por cada hora que ocupa la máquina. Se multiplica por las horas de la figura y hace que el tiempo pese directo en el precio.</p>
+
+    <div class="section-label">Tu negocio</div>
+    <div class="card">
+      <div class="row"><input class="wide" id="s_biz" placeholder="Nombre de tu negocio (opcional)"></div>
+      <div class="row">
+        <div class="lbl">Tasa de IVA <small>ej. 16 — se suma al cotizar</small></div>
+        <div class="right"><input class="num" id="s_iva" type="number" min="0" style="width:64px"><span class="unit">%</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Redondear precio de venta</div>
+        <div class="right"><select id="s_round">
+          <option value="0">Sin redondeo</option>
+          <option value="1">A enteros</option>
+          <option value="5">Múltiplos de 5</option>
+          <option value="10">Múltiplos de 10</option>
+        </select></div>
+      </div>
+    </div>
+
+    <div class="section-label">Datos</div>
+    <div class="card">
+      <div class="row" style="cursor:pointer" onclick="exportData()"><div class="lbl">Exportar todo (JSON)</div><div class="right chev">›</div></div>
+      <div class="row" style="cursor:pointer" onclick="document.getElementById('importFile').click()"><div class="lbl">Importar respaldo</div><div class="right chev">›</div></div>
+    </div>
+    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
+    <p class="hint">Tus datos se guardan en este dispositivo. Usa Exportar para tener un respaldo.</p>
+  </div>
+</section>
+
+<!-- ============ NAV ============ -->
+<nav>
+  <button class="active" data-view="calc" onclick="go('calc')">
+    <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="10" y2="11"/><line x1="14" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="10" y2="15"/><line x1="14" y1="15" x2="16" y2="15"/></svg>
+    Calcular
+  </button>
+  <button data-view="figs" onclick="go('figs')">
+    <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+    Figuras
+  </button>
+  <button data-view="printers" onclick="go('printers')">
+    <svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1"/><path d="M8 17h8v4H8z"/></svg>
+    Impresoras
+  </button>
+  <button data-view="fils" onclick="go('fils')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/></svg>
+    Filamentos
+  </button>
+  <button data-view="settings" onclick="go('settings')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+    Ajustes
+  </button>
+</nav>
+
+<!-- ============ SHEETS ============ -->
+<div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- storage layer (localStorage + fallback) ---------------- */
+const mem = {};
+const store = {
+  async get(k){
+    try{ const v=localStorage.getItem(k); if(v!==null) return JSON.parse(v); }catch(e){}
+    try{ if(window.storage){const r=await window.storage.get(k); return r?JSON.parse(r.value):null;} }catch(e){}
+    return mem[k]!==undefined?mem[k]:null;
+  },
+  async set(k,v){
+    mem[k]=v;
+    try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){}
+    try{ if(window.storage){await window.storage.set(k,JSON.stringify(v));} }catch(e){}
+  }
+};
+
+/* ---------------- default data ---------------- */
+const COLORS=['#ef4444','#f97316','#facc15','#22c55e','#84cc16','#3b82f6','#38bdf8','#a855f7','#ec4899','#f5f5f5','#9ca3af','#374151','#8b5e3c','#ca8a04','#cbd5e1'];
+
+// Paleta amplia con nombre (para el catálogo de filamentos)
+const PALETTE=[
+  ['Negro','#1a1a1a'],['Blanco','#f5f5f5'],['Gris','#9ca3af'],['Gris oscuro','#4b5563'],['Plata','#c0c5cc'],
+  ['Rojo','#e02424'],['Rojo vino','#7f1d1d'],['Naranja','#f97316'],['Amarillo','#facc15'],['Oro','#ca8a04'],
+  ['Verde','#22c55e'],['Verde claro','#84cc16'],['Verde oscuro','#166534'],['Menta','#5eead4'],['Turquesa','#14b8a6'],
+  ['Azul','#2563eb'],['Azul cielo','#38bdf8'],['Azul marino','#1e3a8a'],['Morado','#a855f7'],['Violeta','#6d28d9'],
+  ['Rosa','#ec4899'],['Rosa claro','#f9a8d4'],['Café','#8b5e3c'],['Beige','#d6c7a1'],['Transparente','#d1d5db'],
+];
+
+let data = {
+  settings:{ cur:'$', kwh:2.8, hour:0, biz:'', iva:0, round:0 },
+  printers:[ {id:id(), name:'Mi impresora', watts:120} ],
+  filaments:[ {id:id(), name:'PLA básico', brand:'Genérico', type:'PLA', color:'#22c55e', spoolPrice:350, spoolWeight:1000} ],
+  figures:[]
+};
+let editingFigureId=null;
+
+function id(){return Math.random().toString(36).slice(2,9)}
+function cur(){return data.settings.cur||'$'}
+function money(n){return cur()+' '+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function gramCost(f){return f.spoolWeight>0? f.spoolPrice/f.spoolWeight : 0}
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  const saved = await store.get('extrudeflow_data');
+  if(saved) data = saved;
+  refreshCurrencyLabels();
+  renderAll();
+  bindCalc();
+})();
+
+async function persist(){ await store.set('extrudeflow_data', data); }
+
+function refreshCurrencyLabels(){
+  const c=cur();
+  ['curLabor','curExtra','curKwh','curHour'].forEach(idn=>{const e=document.getElementById(idn);if(e)e.textContent=c});
+}
+
+/* ---------------- navigation ---------------- */
+function go(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
+  document.getElementById('v-'+v).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  const subs={calc:'Cotiza una figura',figs:'Tus figuras',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
+  document.getElementById('hdrSub').textContent=subs[v]||'';
+  window.scrollTo(0,0);
+}
+
+/* ---------------- render lists ---------------- */
+function renderAll(){
+  renderPrinters(); renderFilaments(); renderFigures(); renderSettings(); renderCalcSelectors();
+}
+
+function renderPrinters(){
+  const el=document.getElementById('printerList');
+  if(!data.printers.length){el.innerHTML='<div class="empty">Aún no hay impresoras.</div>';return}
+  el.innerHTML=data.printers.map(p=>`
+    <div class="list-item" onclick="openPrinter('${p.id}')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="1.8"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1"/><path d="M8 17h8v4H8z"/></svg>
+      <div class="meta"><div class="t">${esc(p.name)}</div><div class="s">${p.watts} W${p.vol?' · '+esc(p.vol)+' mm':''}${p.ptype?' · '+esc(p.ptype):''}</div></div>
+      <span class="chev">›</span>
+    </div>`).join('');
+}
+
+function renderFilaments(){
+  const el=document.getElementById('filStock');
+  if(!data.filaments.length){el.innerHTML='<div class="empty">Aún no hay filamentos.</div>';return}
+  el.innerHTML=data.filaments.map(f=>`
+    <div class="list-item" onclick="openFilament('${f.id}')">
+      <span class="swatch" style="background:${f.color}"></span>
+      <div class="meta"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.brand||'')} · ${esc(f.type||'')}</div></div>
+      <div class="val"><b>${money(gramCost(f))}</b>/g</div>
+      <span class="chev">›</span>
+    </div>`).join('');
+}
+
+function renderFigures(){
+  const el=document.getElementById('figList');
+  if(!data.figures.length){el.innerHTML='<div class="empty">No has guardado figuras.<br>Cotiza una y toca “Guardar figura”.</div>';return}
+  el.innerHTML=data.figures.slice().reverse().map(f=>`
+    <div class="list-item" onclick="loadFigure('${f.id}')">
+      <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo</div></div>
+      <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
+      <span class="chev">›</span>
+    </div>`).join('');
+}
+
+function renderSettings(){
+  const s=data.settings;
+  document.getElementById('s_cur').value=s.cur;
+  document.getElementById('s_kwh').value=s.kwh;
+  document.getElementById('s_hour').value=s.hour;
+  document.getElementById('s_biz').value=s.biz;
+  document.getElementById('s_iva').value=s.iva;
+  document.getElementById('s_round').value=s.round;
+  ['s_cur','s_kwh','s_hour','s_biz','s_iva','s_round'].forEach(idn=>{
+    const e=document.getElementById(idn);
+    e.oninput=e.onchange=()=>{
+      s.cur=document.getElementById('s_cur').value||'$';
+      s.kwh=+document.getElementById('s_kwh').value||0;
+      s.hour=+document.getElementById('s_hour').value||0;
+      s.biz=document.getElementById('s_biz').value;
+      s.iva=+document.getElementById('s_iva').value||0;
+      s.round=+document.getElementById('s_round').value||0;
+      refreshCurrencyLabels(); persist(); calc();
+    };
+  });
+}
+
+/* ---------------- calculator ---------------- */
+function renderCalcSelectors(){
+  const ps=document.getElementById('c_printer');
+  ps.innerHTML=data.printers.map(p=>`<option value="${p.id}">${esc(p.name)} · ${p.watts}W</option>`).join('')||'<option>—</option>';
+  document.querySelectorAll('#c_filWrap .fil-line').forEach(refreshFilOptions);
+  if(!document.querySelectorAll('#c_filWrap .fil-line').length) addFilLine();
+}
+
+function filOptionsHTML(sel){
+  return data.filaments.map(f=>`<option value="${f.id}" ${f.id===sel?'selected':''}>${esc(f.name)} (${money(gramCost(f))}/g)</option>`).join('');
+}
+
+function addFilLine(filId,grams){
+  const wrap=document.getElementById('c_filWrap');
+  const div=document.createElement('div');
+  div.className='fil-line';
+  div.innerHTML=`
+    <select class="fsel">${filOptionsHTML(filId||(data.filaments[0]&&data.filaments[0].id))}</select>
+    <input type="number" class="fg" min="0" placeholder="g" value="${grams!=null?grams:15}">
+    <span class="unit">g</span>
+    <span class="x" onclick="this.parentNode.remove();calc()">×</span>`;
+  wrap.appendChild(div);
+  div.querySelector('.fsel').onchange=calc;
+  div.querySelector('.fg').oninput=calc;
+  calc();
+}
+function refreshFilOptions(line){
+  const sel=line.querySelector('.fsel');const cur=sel.value;
+  sel.innerHTML=filOptionsHTML(cur);
+}
+
+function bindCalc(){
+  ['c_name','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
+    const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
+  });
+  calc();
+}
+
+function computeCost(){
+  const s=data.settings;
+  const h=+document.getElementById('c_h').value||0;
+  const m=+document.getElementById('c_m').value||0;
+  const hours=h+m/60;
+  // material
+  let material=0;
+  document.querySelectorAll('#c_filWrap .fil-line').forEach(line=>{
+    const f=data.filaments.find(x=>x.id===line.querySelector('.fsel').value);
+    const g=+line.querySelector('.fg').value||0;
+    if(f) material+=gramCost(f)*g;
+  });
+  const mermaPct=+document.getElementById('c_merma').value||0;
+  const merma=material*mermaPct/100;
+  // electricity
+  const p=data.printers.find(x=>x.id===document.getElementById('c_printer').value);
+  const watts=p?p.watts:0;
+  const elec=(watts/1000)*hours*(s.kwh||0);
+  // machine hour
+  const machine=(s.hour||0)*hours;
+  const labor=+document.getElementById('c_labor').value||0;
+  const extra=+document.getElementById('c_extra').value||0;
+  const total=material+merma+elec+machine+labor+extra;
+  const marginPct=+document.getElementById('c_margin').value||0;
+  const margin=total*marginPct/100;
+  let sale=total+margin;
+  const iva=sale*(s.iva||0)/100;
+  sale+=iva;
+  // round
+  if(s.round>0){ sale=Math.ceil(sale/s.round)*s.round; }
+  return {hours,material,merma,elec,machine,labor,extra,total,margin,marginPct,iva,sale};
+}
+
+function calc(){
+  const r=computeCost();
+  const s=data.settings;
+  const rows=[
+    ['Material',r.material],
+    ['Merma',r.merma],
+    ['Electricidad',r.elec],
+  ];
+  if(r.machine>0) rows.push(['Hora de máquina',r.machine]);
+  if(r.labor>0) rows.push(['Mano de obra',r.labor]);
+  if(r.extra>0) rows.push(['Costos extra',r.extra]);
+  let html=rows.map(([l,v])=>`<div class="row"><div class="lbl">${l}</div><div class="amount">${money(v)}</div></div>`).join('');
+  html+=`<div class="row total"><div class="lbl">Costo total</div><div class="amount">${money(r.total)}</div></div>`;
+  html+=`<div class="row"><div class="lbl muted">Margen (${r.marginPct}%)</div><div class="amount muted">${money(r.margin)}</div></div>`;
+  if(r.iva>0) html+=`<div class="row"><div class="lbl muted">IVA (${s.iva}%)</div><div class="amount muted">${money(r.iva)}</div></div>`;
+  html+=`<div class="row sale"><div class="lbl">Precio de venta</div><div class="amount">${money(r.sale)}</div></div>`;
+  document.getElementById('c_result').innerHTML=html;
+  document.getElementById('saveBtn').textContent = editingFigureId?'Actualizar figura':'Guardar figura';
+}
+
+function resetCalc(){
+  editingFigureId=null;
+  document.getElementById('c_name').value='';
+  document.getElementById('c_h').value=1;document.getElementById('c_m').value=0;
+  document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
+  document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
+  document.getElementById('c_filWrap').innerHTML='';addFilLine();
+  calc();
+}
+
+function saveFigure(){
+  const r=computeCost();
+  const fils=[...document.querySelectorAll('#c_filWrap .fil-line')].map(line=>({
+    filId:line.querySelector('.fsel').value, grams:+line.querySelector('.fg').value||0
+  }));
+  const fig={
+    id:editingFigureId||id(),
+    name:document.getElementById('c_name').value||'Sin nombre',
+    timeH:+document.getElementById('c_h').value||0,
+    timeM:+document.getElementById('c_m').value||0,
+    printerId:document.getElementById('c_printer').value,
+    merma:+document.getElementById('c_merma').value||0,
+    margin:+document.getElementById('c_margin').value||0,
+    labor:+document.getElementById('c_labor').value||0,
+    extra:+document.getElementById('c_extra').value||0,
+    fils,
+    snapshot:{total:r.total,sale:r.sale}
+  };
+  if(editingFigureId){
+    const i=data.figures.findIndex(f=>f.id===editingFigureId);
+    data.figures[i]=fig;
+  } else data.figures.push(fig);
+  editingFigureId=fig.id;
+  persist(); renderFigures(); calc();
+  toast(editingFigureId?'Figura actualizada':'Figura guardada');
+}
+
+function loadFigure(fid){
+  const f=data.figures.find(x=>x.id===fid); if(!f) return;
+  editingFigureId=fid;
+  document.getElementById('c_name').value=f.name;
+  document.getElementById('c_h').value=f.timeH;
+  document.getElementById('c_m').value=f.timeM;
+  document.getElementById('c_merma').value=f.merma;
+  document.getElementById('c_margin').value=f.margin;
+  document.getElementById('c_labor').value=f.labor||0;
+  document.getElementById('c_extra').value=f.extra||0;
+  const ps=document.getElementById('c_printer'); if([...ps.options].some(o=>o.value===f.printerId)) ps.value=f.printerId;
+  document.getElementById('c_filWrap').innerHTML='';
+  (f.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
+  if(!f.fils||!f.fils.length) addFilLine();
+  go('calc'); calc();
+  toast('Figura cargada');
+}
+
+/* ---------------- printer catalog ---------------- */
+// watts = consumo PROMEDIO real durante impresión de PLA (no el del PSU).
+const PRINTER_CATALOG=[
+  {group:'Bambu Lab', items:[
+    {name:'Bambu Lab A1 mini', watts:70,  vol:'180×180×180', type:'FDM'},
+    {name:'Bambu Lab A1',      watts:90,  vol:'256×256×256', type:'FDM'},
+    {name:'Bambu Lab P1P',     watts:100, vol:'256×256×256', type:'FDM'},
+    {name:'Bambu Lab P1S',     watts:100, vol:'256×256×256', type:'FDM cerrada'},
+    {name:'Bambu Lab X1 Carbon',watts:120,vol:'256×256×256', type:'FDM cerrada'},
+    {name:'Bambu Lab H2D',     watts:150, vol:'325×320×325', type:'FDM cerrada'},
+  ]},
+  {group:'Creality', items:[
+    {name:'Creality Ender 3 / Pro', watts:120, vol:'220×220×250', type:'FDM'},
+    {name:'Creality Ender 3 V2',    watts:110, vol:'220×220×250', type:'FDM'},
+    {name:'Creality Ender 3 V3 SE', watts:125, vol:'220×220×250', type:'FDM'},
+    {name:'Creality Ender 3 V3 KE', watts:150, vol:'220×220×240', type:'FDM'},
+    {name:'Creality Ender 5 / Pro', watts:130, vol:'220×220×300', type:'FDM'},
+    {name:'Creality CR-10',         watts:200, vol:'300×300×400', type:'FDM'},
+    {name:'Creality K1',            watts:100, vol:'220×220×250', type:'FDM cerrada'},
+    {name:'Creality K1 Max',        watts:150, vol:'300×300×300', type:'FDM cerrada'},
+  ]},
+  {group:'Prusa', items:[
+    {name:'Prusa MK3S+', watts:100, vol:'250×210×210', type:'FDM'},
+    {name:'Prusa MK4',   watts:100, vol:'250×210×220', type:'FDM'},
+    {name:'Prusa MINI+', watts:80,  vol:'180×180×180', type:'FDM'},
+    {name:'Prusa XL (1 tool)', watts:185, vol:'360×360×360', type:'FDM'},
+  ]},
+  {group:'Elegoo / Anycubic (FDM)', items:[
+    {name:'Elegoo Neptune 4 Pro', watts:210, vol:'225×225×265', type:'FDM'},
+    {name:'Anycubic Kobra 2',     watts:150, vol:'220×220×250', type:'FDM'},
+    {name:'Anycubic Kobra 3',     watts:180, vol:'250×250×260', type:'FDM'},
+  ]},
+  {group:'Resina (MSLA)', items:[
+    {name:'Elegoo Mars 4 Ultra',   watts:60, vol:'153×77×165', type:'Resina'},
+    {name:'Elegoo Saturn 4 Ultra', watts:80, vol:'218×123×220',type:'Resina'},
+    {name:'Anycubic Photon Mono M5',watts:70,vol:'218×123×200',type:'Resina'},
+  ]},
+];
+
+function openCatalog(){
+  const body=PRINTER_CATALOG.map(g=>`
+    <div class="section-label">${g.group}</div>
+    <div class="card">
+      ${g.items.map(p=>`
+        <div class="list-item" onclick='addFromCatalog(${JSON.stringify(p).replace(/'/g,"&#39;")})'>
+          <div class="meta"><div class="t">${esc(p.name)}</div><div class="s">${p.type} · ${p.vol} mm</div></div>
+          <div class="val"><b>${p.watts} W</b><div class="s">promedio</div></div>
+          <span class="chev">+</span>
+        </div>`).join('')}
+    </div>`).join('');
+  openSheet('Catálogo de impresoras', `<div class="wrap">
+    <p class="hint" style="margin:6px 4px 2px">Toca una para agregarla. Luego puedes editar el nombre o el consumo.</p>
+    ${body}
+  </div>`);
+}
+function addFromCatalog(p){
+  data.printers.push({id:id(), name:p.name, watts:p.watts, vol:p.vol, ptype:p.type});
+  persist(); renderPrinters(); renderCalcSelectors(); calc(); closeSheet();
+  toast(p.name+' agregada');
+}
+
+/* ---------------- printer sheet ---------------- */
+function openPrinter(pid){
+  const p = pid? data.printers.find(x=>x.id===pid) : {id:null,name:'',watts:120};
+  openSheet(`Impresora`, `
+    <div class="wrap">
+      <div class="section-label">Datos básicos</div>
+      <div class="card">
+        <div class="row"><input class="wide" id="p_name" placeholder="Nombre de la impresora" value="${esc(p.name)}"></div>
+        <div class="row"><div class="lbl">Consumo</div><div class="right"><input class="num" id="p_watts" type="number" min="0" value="${p.watts}"><span class="unit">W</span></div></div>
+      </div>
+      <div class="save-strip" style="display:flex;gap:10px">
+        <button class="btn block" onclick="savePrinter('${p.id||''}')">Guardar</button>
+        ${pid?`<button class="btn danger sm" onclick="delPrinter('${pid}')">Eliminar</button>`:''}
+      </div>
+    </div>`);
+}
+function savePrinter(pid){
+  const name=document.getElementById('p_name').value.trim()||'Sin nombre';
+  const watts=+document.getElementById('p_watts').value||0;
+  if(pid){const p=data.printers.find(x=>x.id===pid);p.name=name;p.watts=watts;}
+  else data.printers.push({id:id(),name,watts});
+  persist();renderPrinters();renderCalcSelectors();calc();closeSheet();toast('Impresora guardada');
+}
+function delPrinter(pid){
+  data.printers=data.printers.filter(x=>x.id!==pid);
+  persist();renderPrinters();renderCalcSelectors();calc();closeSheet();toast('Impresora eliminada');
+}
+
+/* ---------------- filament catalog ---------------- */
+// price = precio de referencia por carrete de 1kg en la moneda del usuario (MXN aprox). Editable al agregar.
+const FIL_CATALOG=[
+  {brand:'Bambu Lab', weight:1000, lines:[
+    {type:'PLA Basic',  price:480},
+    {type:'PLA Matte',  price:480},
+    {type:'PLA Silk+',  price:620},
+    {type:'PLA Basic Gradient', price:650},
+    {type:'PETG HF',    price:520},
+    {type:'PETG Translucent', price:560},
+    {type:'ABS',        price:520},
+    {type:'ASA',        price:620},
+    {type:'TPU 95A HF', price:680},
+    {type:'PLA-CF',     price:900},
+    {type:'PETG-CF',    price:980},
+    {type:'PA (Nylon)', price:1200},
+  ]},
+  {brand:'SUNLU', weight:1000, lines:[
+    {type:'PLA',        price:300},
+    {type:'PLA+ 2.0',   price:350},
+    {type:'PLA Meta',   price:370},
+    {type:'PLA Silk',   price:390},
+    {type:'PLA Matte',  price:360},
+    {type:'PETG',       price:360},
+    {type:'ABS',        price:370},
+    {type:'ASA',        price:450},
+    {type:'TPU',        price:520},
+    {type:'PLA Marble', price:400},
+    {type:'PLA Wood',   price:430},
+    {type:'Resina estándar', price:400, weight:1000},
+  ]},
+  {brand:'eSUN', weight:1000, lines:[
+    {type:'PLA+',       price:340},
+    {type:'PLA+ HS (alta velocidad)', price:380},
+    {type:'PLA Silk',   price:400},
+    {type:'PLA Matte',  price:360},
+    {type:'PETG',       price:370},
+    {type:'ABS+',       price:380},
+    {type:'ASA',        price:460},
+    {type:'TPU 95A',    price:520},
+    {type:'ePA-CF (Nylon CF)', price:1100},
+    {type:'Wood',       price:440},
+  ]},
+  {brand:'Overture', weight:1000, lines:[
+    {type:'PLA',            price:360},
+    {type:'PLA Professional',price:420},
+    {type:'PLA Matte',      price:400},
+    {type:'Silk PLA',       price:430},
+    {type:'PETG',           price:400},
+    {type:'ABS',            price:420},
+    {type:'TPU',            price:560},
+    {type:'Rock PLA',       price:460},
+  ]},
+];
+
+let pendingFil=null; // filamento del catálogo esperando color
+function openFilCatalog(){
+  const body=FIL_CATALOG.map(b=>`
+    <div class="section-label">${b.brand}</div>
+    <div class="card">
+      ${b.lines.map(l=>{
+        const w=l.weight||b.weight;
+        const obj={brand:b.brand,type:l.type,price:l.price,weight:w};
+        return `<div class="list-item" onclick='pickFilFromCatalog(${JSON.stringify(obj).replace(/'/g,"&#39;")})'>
+          <div class="meta"><div class="t">${esc(l.type)}</div><div class="s">${w} g · ~${money(l.price)} carrete</div></div>
+          <div class="val"><b>${money(l.price/w)}</b>/g</div>
+          <span class="chev">+</span>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+  openSheet('Catálogo de filamentos', `<div class="wrap">
+    <p class="hint" style="margin:6px 4px 2px">Toca un filamento para elegir su color. Precios de referencia — ajústalos después a lo que pagaste.</p>
+    ${body}
+  </div>`);
+}
+
+function pickFilFromCatalog(obj){
+  pendingFil=obj;
+  const chips=PALETTE.map(([n,c])=>`
+    <div class="list-item" onclick='addFilFromCatalog(${JSON.stringify(c)},${JSON.stringify(n)})'>
+      <span class="swatch" style="background:${c};width:20px;height:20px"></span>
+      <div class="meta"><div class="t">${n}</div></div>
+      <span class="chev">+</span>
+    </div>`).join('');
+  openSheet(`${obj.brand} · ${obj.type}`, `<div class="wrap">
+    <p class="hint" style="margin:6px 4px 2px">Elige un color. Puedes agregar el mismo filamento en varios colores.</p>
+    <div class="card">${chips}</div>
+    <div style="padding:12px 0"><button class="btn ghost block" onclick="openFilCatalog()">‹ Volver al catálogo</button></div>
+  </div>`);
+}
+
+function addFilFromCatalog(color,colorName){
+  const o=pendingFil; if(!o) return;
+  data.filaments.push({
+    id:id(),
+    name:`${o.brand} ${o.type} ${colorName}`,
+    brand:o.brand, type:o.type, color:color,
+    spoolPrice:o.price, spoolWeight:o.weight
+  });
+  persist(); renderFilaments(); renderCalcSelectors(); calc();
+  toast(`${o.type} ${colorName} agregado`);
+  // reabrir selector de color para agregar otro color rápido
+  pickFilFromCatalog(o);
+}
+
+/* ---------------- filament sheet ---------------- */
+let pickColor='#22c55e';
+function openFilament(fid){
+  const f = fid? data.filaments.find(x=>x.id===fid) : {id:null,name:'',brand:'',type:'PLA',color:'#22c55e',spoolPrice:350,spoolWeight:1000};
+  pickColor=f.color;
+  const types=['PLA','PETG','ABS','TPU','ASA','Nylon','Resina','Otro'];
+  openSheet('Filamento', `
+    <div class="wrap">
+      <div class="section-label">Identificación</div>
+      <div class="card">
+        <div class="row"><input class="wide" id="f_name" placeholder="Nombre (ej. PLA básico)" value="${esc(f.name)}"></div>
+        <div class="row"><input class="wide" id="f_brand" placeholder="Marca" value="${esc(f.brand)}"></div>
+        <div class="row"><div class="lbl">Tipo</div><div class="right"><select id="f_type">${types.map(t=>`<option ${t===f.type?'selected':''}>${t}</option>`).join('')}</select></div></div>
+      </div>
+      <div class="section-label">Color</div>
+      <div class="card"><div class="colorgrid" id="colorGrid">
+        ${PALETTE.map(([n,c])=>`<button style="background:${c}" title="${n}" data-c="${c}" class="${c===f.color?'sel':''}" onclick="selColor('${c}',this)"></button>`).join('')}
+      </div></div>
+      <div class="section-label">Costo</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Precio del carrete</div><div class="right"><input class="num" id="f_price" type="number" min="0" value="${f.spoolPrice}"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl">Peso del carrete</div><div class="right"><input class="num" id="f_weight" type="number" min="1" value="${f.spoolWeight}"><span class="unit">g</span></div></div>
+        <div class="row"><div class="lbl">Precio por gramo</div><div class="right faint" id="f_perg">${money(gramCost(f))}/g</div></div>
+      </div>
+      <div class="save-strip" style="display:flex;gap:10px">
+        <button class="btn block" onclick="saveFilament('${f.id||''}')">Guardar</button>
+        ${fid?`<button class="btn danger sm" onclick="delFilament('${fid}')">Eliminar</button>`:''}
+      </div>
+    </div>`);
+  const upd=()=>{const pr=+document.getElementById('f_price').value||0,w=+document.getElementById('f_weight').value||1;document.getElementById('f_perg').textContent=money(pr/w)+'/g'};
+  document.getElementById('f_price').oninput=upd;document.getElementById('f_weight').oninput=upd;
+}
+function selColor(c,btn){pickColor=c;document.querySelectorAll('#colorGrid button').forEach(b=>b.classList.remove('sel'));btn.classList.add('sel')}
+function saveFilament(fid){
+  const obj={
+    name:document.getElementById('f_name').value.trim()||'Sin nombre',
+    brand:document.getElementById('f_brand').value.trim(),
+    type:document.getElementById('f_type').value,
+    color:pickColor,
+    spoolPrice:+document.getElementById('f_price').value||0,
+    spoolWeight:+document.getElementById('f_weight').value||1
+  };
+  if(fid){Object.assign(data.filaments.find(x=>x.id===fid),obj);}
+  else data.filaments.push({id:id(),...obj});
+  persist();renderFilaments();renderCalcSelectors();calc();closeSheet();toast('Filamento guardado');
+}
+function delFilament(fid){
+  data.filaments=data.filaments.filter(x=>x.id!==fid);
+  persist();renderFilaments();renderCalcSelectors();calc();closeSheet();toast('Filamento eliminado');
+}
+
+/* ---------------- sheet infra ---------------- */
+function openSheet(title,inner){
+  document.getElementById('sheet').innerHTML=`<div class="grip"></div><div class="bar"><h3>${title}</h3><button class="close" onclick="closeSheet()">Cerrar</button></div>${inner}`;
+  document.getElementById('scrim').classList.add('show');
+}
+function closeSheet(){document.getElementById('scrim').classList.remove('show')}
+document.getElementById('scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet()});
+
+/* ---------------- data export/import ---------------- */
+function exportData(){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='extrudeflow-respaldo.json';a.click();toast('Respaldo exportado');
+}
+function importData(ev){
+  const file=ev.target.files[0];if(!file)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{data=JSON.parse(rd.result);persist();refreshCurrencyLabels();renderAll();bindCalc();toast('Respaldo importado');}catch(e){toast('Archivo inválido')}};
+  rd.readAsText(file);ev.target.value='';
+}
+
+/* ---------------- utils ---------------- */
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+let toastT;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1600)}
+</script>
+</body>
+</html>
