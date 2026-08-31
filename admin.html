@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ExtrudeFlow · Administración</title>
+<meta name="theme-color" content="#0d100e">
+<meta name="robots" content="noindex">
+<style>
+  :root{
+    --bg:#0d100e;--panel:#161a17;--panel-2:#1e2320;--line:#2a302c;
+    --ink:#eef2ef;--ink-soft:#9aa39d;--ink-faint:#697069;
+    --accent:#4ade80;--accent-deep:#22c55e;--accent-ink:#062011;
+    --warn:#fbbf24;--danger:#f87171;--radius:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    line-height:1.45;-webkit-font-smoothing:antialiased;padding:0 0 60px}
+  .wrap{max-width:820px;margin:0 auto;padding:0 16px}
+  header.app{padding:22px 16px 14px;max-width:820px;margin:0 auto;display:flex;align-items:baseline;gap:10px}
+  header.app h1{font-size:24px;margin:0;letter-spacing:-.5px;font-weight:800}
+  header.app .dot{color:var(--accent)}
+  header.app a.back{margin-left:auto;color:var(--ink-soft);font-size:13px;text-decoration:none}
+  .section-label{color:var(--ink-faint);font-size:12.5px;font-weight:600;margin:22px 2px 8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .row:last-child{border-bottom:none}
+  .grow{flex:1;min-width:140px}
+  label.fld{display:block;font-size:12px;color:var(--ink-soft);margin:0 2px 5px}
+  input,select{font-family:inherit;font-size:15px;color:var(--ink);background:#000;
+    border:1px solid var(--line);border-radius:9px;padding:9px 11px;outline:none;transition:border-color .15s;width:100%}
+  input:focus,select:focus{border-color:var(--accent-deep)}
+  .btn{font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;border:none;border-radius:10px;
+    padding:10px 14px;background:var(--accent);color:var(--accent-ink);transition:transform .08s,opacity .15s}
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn.sm{padding:7px 11px;font-size:12.5px}
+  .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line)}
+  .btn.warn{background:transparent;color:var(--warn);border:1px solid var(--line)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--ink-faint);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}
+  .tag.admin{color:var(--accent);background:rgba(74,222,128,.12)}
+  .tag.user{color:var(--ink-soft);background:rgba(255,255,255,.05)}
+  .tag.on{color:var(--accent);background:rgba(74,222,128,.12)}
+  .tag.off{color:var(--danger);background:rgba(248,113,113,.12)}
+  .tag.lock{color:var(--warn);background:rgba(251,191,36,.12)}
+  .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .muted{color:var(--ink-faint);font-size:12px}
+  .msg{font-size:13px;margin:10px 2px 0;min-height:18px}
+  .msg.err{color:var(--danger)}
+  .msg.ok{color:var(--accent)}
+  .gate{max-width:360px;margin:12vh auto 0;text-align:center;color:var(--ink-soft);font-size:14px}
+  .gate a{color:var(--accent)}
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+  .hide{display:none}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1>Extrude<span class="dot">Flow</span> · Admin</h1>
+  <a class="back" href="/">‹ volver a la app</a>
+</header>
+
+<div id="gate" class="gate hide"></div>
+
+<main id="panel" class="wrap hide">
+  <div class="section-label">Crear usuario</div>
+  <div class="card">
+    <div class="row">
+      <div class="grow">
+        <label class="fld" for="n_user">Usuario</label>
+        <input id="n_user" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="ej. taller-norte">
+      </div>
+      <div class="grow">
+        <label class="fld" for="n_pass">Contraseña temporal</label>
+        <input id="n_pass" type="text" autocomplete="off" placeholder="mínimo 8 caracteres">
+      </div>
+      <div style="width:130px">
+        <label class="fld" for="n_role">Rol</label>
+        <select id="n_role"><option value="user">Usuario</option><option value="admin">Admin</option></select>
+      </div>
+      <div style="align-self:flex-end"><button class="btn" id="n_btn" onclick="createUser()">Crear</button></div>
+    </div>
+  </div>
+  <div class="msg" id="createMsg"></div>
+  <p class="muted" style="margin:4px 2px">La contraseña la defines tú y se la entregas al usuario. Él puede cambiarla luego desde Ajustes › Cambiar mi contraseña.</p>
+
+  <div class="section-label">Usuarios</div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th>Usuario</th><th>Rol</th><th>Estado</th><th>Últ. acceso</th><th>Datos</th><th>Acciones</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="msg" id="listMsg"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let me = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const err = new Error((payload && payload.error) || ('Error ' + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return payload;
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+(async function boot() {
+  try {
+    me = await api('/auth/me');
+  } catch (e) {
+    $('gate').classList.remove('hide');
+    $('gate').innerHTML = 'Necesitas iniciar sesión. <a href="/">Ir a la app</a>';
+    return;
+  }
+  if (me.role !== 'admin') {
+    $('gate').classList.remove('hide');
+    $('gate').innerHTML = 'Tu cuenta no tiene permisos de administrador. <a href="/">Volver</a>';
+    return;
+  }
+  $('panel').classList.remove('hide');
+  loadUsers();
+})();
+
+async function loadUsers() {
+  try {
+    const { users } = await api('/admin/users');
+    render(users);
+  } catch (e) {
+    $('listMsg').className = 'msg err';
+    $('listMsg').textContent = e.message;
+  }
+}
+
+function render(users) {
+  if (!users.length) {
+    $('rows').innerHTML = '<tr><td colspan="6" class="muted">Sin usuarios.</td></tr>';
+    return;
+  }
+  $('rows').innerHTML = users.map((u) => {
+    const locked = u.locked_until && new Date(u.locked_until) > new Date();
+    const isMe = me && u.username.toLowerCase() === me.username.toLowerCase();
+    return `<tr>
+      <td>${esc(u.username)}${isMe ? ' <span class="muted">(tú)</span>' : ''}</td>
+      <td><span class="tag ${u.role}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
+      <td>
+        <span class="tag ${u.active ? 'on' : 'off'}">${u.active ? 'Activo' : 'Inactivo'}</span>
+        ${locked ? '<span class="tag lock">Bloqueado</span>' : ''}
+      </td>
+      <td class="muted">${fmtDate(u.last_login_at)}</td>
+      <td class="muted">${fmtDate(u.data_updated_at)}</td>
+      <td class="acts">
+        <button class="btn sm ghost" onclick="resetPass(${u.id}, '${esc(u.username).replace(/'/g, "\\'")}')">Resetear contraseña</button>
+        <button class="btn sm ${u.active ? 'warn' : 'ghost'}" onclick="toggleActive(${u.id}, ${u.active}, ${isMe})">${u.active ? 'Desactivar' : 'Activar'}</button>
+        ${locked ? `<button class="btn sm ghost" onclick="unlock(${u.id})">Desbloquear</button>` : ''}
+        <button class="btn sm ghost" onclick="toggleRole(${u.id}, '${u.role}', ${isMe})">${u.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}</button>
+        <button class="btn sm danger" onclick="removeUser(${u.id}, '${esc(u.username).replace(/'/g, "\\'")}', ${isMe})">Eliminar</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function createUser() {
+  const username = $('n_user').value.trim();
+  const password = $('n_pass').value;
+  const role = $('n_role').value;
+  const msg = $('createMsg');
+  msg.className = 'msg';
+  msg.textContent = '';
+  if (!username || !password) { msg.className = 'msg err'; msg.textContent = 'Completa usuario y contraseña.'; return; }
+  $('n_btn').disabled = true;
+  try {
+    await api('/admin/users', { method: 'POST', body: { username, password, role } });
+    msg.className = 'msg ok';
+    msg.textContent = `Usuario "${username}" creado. Contraseña: ${password}`;
+    $('n_user').value = '';
+    $('n_pass').value = '';
+    $('n_role').value = 'user';
+    loadUsers();
+  } catch (e) {
+    msg.className = 'msg err';
+    msg.textContent = e.message;
+  } finally {
+    $('n_btn').disabled = false;
+  }
+}
+
+async function resetPass(id, username) {
+  const np = prompt(`Nueva contraseña para "${username}" (mínimo 8):`);
+  if (np === null) return;
+  if (np.length < 8) { alert('Debe tener al menos 8 caracteres.'); return; }
+  try {
+    await api('/admin/users/' + id, { method: 'PATCH', body: { password: np } });
+    flash(`Contraseña de "${username}" actualizada. Su sesión se cerró; deberá entrar de nuevo.`);
+    loadUsers();
+  } catch (e) { flash(e.message, true); }
+}
+
+async function toggleActive(id, current, isMe) {
+  if (current && isMe) { alert('No puedes desactivar tu propia cuenta.'); return; }
+  try {
+    await api('/admin/users/' + id, { method: 'PATCH', body: { active: !current } });
+    flash(!current ? 'Acceso activado.' : 'Acceso desactivado. Sus sesiones se cerraron.');
+    loadUsers();
+  } catch (e) { flash(e.message, true); }
+}
+
+async function unlock(id) {
+  try {
+    await api('/admin/users/' + id, { method: 'PATCH', body: { unlock: true } });
+    flash('Cuenta desbloqueada.');
+    loadUsers();
+  } catch (e) { flash(e.message, true); }
+}
+
+async function toggleRole(id, current, isMe) {
+  const next = current === 'admin' ? 'user' : 'admin';
+  if (current === 'admin' && isMe) { alert('No puedes quitarte a ti mismo el rol admin.'); return; }
+  if (!confirm(`¿Cambiar rol a ${next}?`)) return;
+  try {
+    await api('/admin/users/' + id, { method: 'PATCH', body: { role: next } });
+    flash('Rol actualizado.');
+    loadUsers();
+  } catch (e) { flash(e.message, true); }
+}
+
+async function removeUser(id, username, isMe) {
+  if (isMe) { alert('No puedes eliminar tu propia cuenta.'); return; }
+  if (!confirm(`Eliminar a "${username}" y TODOS sus datos. Esta acción no se puede deshacer. ¿Continuar?`)) return;
+  try {
+    await api('/admin/users/' + id, { method: 'DELETE' });
+    flash(`Usuario "${username}" eliminado.`);
+    loadUsers();
+  } catch (e) { flash(e.message, true); }
+}
+
+function flash(text, isErr) {
+  const el = $('listMsg');
+  el.className = 'msg ' + (isErr ? 'err' : 'ok');
+  el.textContent = text;
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => { el.textContent = ''; }, 6000);
+}
+</script>
+</body>
+</html>

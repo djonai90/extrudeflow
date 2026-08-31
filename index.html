@@ -175,13 +175,48 @@
 
   .pill{font-size:11px;font-weight:700;color:var(--accent);background:rgba(74,222,128,.12);padding:3px 9px;border-radius:20px}
   .save-strip{padding:16px}
+
+  /* auth */
+  #login{
+    position:fixed;inset:0;z-index:100;background:var(--bg);display:none;
+    overflow-y:auto;padding:calc(env(safe-area-inset-top) + 8vh) 20px 40px;
+  }
+  #login.show{display:block}
+  #login .box{max-width:360px;margin:0 auto}
+  #login h1{font-size:30px;font-weight:800;letter-spacing:-.5px;margin:0 0 4px}
+  #login h1 .dot{color:var(--accent)}
+  #login p.tag{color:var(--ink-faint);font-size:13.5px;margin:0 0 22px}
+  #login label{display:block;font-size:13px;color:var(--ink-soft);margin:14px 2px 6px}
+  #login input{width:100%}
+  #login .msg{color:var(--danger);font-size:13px;min-height:18px;margin:12px 2px 0}
+  #login button{margin-top:18px}
+  .sync{font-size:11px;color:var(--ink-faint);white-space:nowrap}
+  .sync.ok{color:var(--accent)}
+  .sync.bad{color:var(--danger)}
+  body:not(.authed) nav{display:none}
 </style>
 </head>
 <body>
 
+<div id="login">
+  <div class="box">
+    <h1>Extrude<span class="dot">Flow</span></h1>
+    <p class="tag">Inicia sesión para ver tus cotizaciones.</p>
+    <form onsubmit="doLogin(event)">
+      <label for="lg_user">Usuario</label>
+      <input id="lg_user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <label for="lg_pass">Contraseña</label>
+      <input id="lg_pass" type="password" autocomplete="current-password">
+      <div class="msg" id="lg_msg"></div>
+      <button class="btn block" id="lg_btn" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
 <header class="app">
   <h1>Extrude<span class="dot">Flow</span></h1>
   <span class="sub" id="hdrSub">Gestor de impresión 3D</span>
+  <span class="sync" id="syncState"></span>
 </header>
 
 <!-- ============ CALCULAR ============ -->
@@ -316,13 +351,27 @@
       </div>
     </div>
 
+    <div class="section-label">Sesión</div>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Conectado como <small id="whoami">—</small></div>
+        <div class="right"><button class="btn ghost sm" onclick="doLogout()">Cerrar sesión</button></div>
+      </div>
+      <div class="row" style="cursor:pointer" onclick="changeMyPassword()">
+        <div class="lbl">Cambiar mi contraseña</div><div class="right chev">›</div>
+      </div>
+      <a class="row" id="adminLink" href="/admin" style="display:none;text-decoration:none;color:inherit">
+        <div class="lbl">Panel de administrador</div><div class="right chev">›</div>
+      </a>
+    </div>
+
     <div class="section-label">Datos</div>
     <div class="card">
       <div class="row" style="cursor:pointer" onclick="exportData()"><div class="lbl">Exportar todo (JSON)</div><div class="right chev">›</div></div>
       <div class="row" style="cursor:pointer" onclick="document.getElementById('importFile').click()"><div class="lbl">Importar respaldo</div><div class="right chev">›</div></div>
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
-    <p class="hint">Tus datos se guardan en este dispositivo. Usa Exportar para tener un respaldo.</p>
+    <p class="hint">Tus datos se guardan en tu cuenta y se sincronizan en la nube. Usa Exportar para tener un respaldo local.</p>
   </div>
 </section>
 
@@ -356,20 +405,50 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ---------------- storage layer (localStorage + fallback) ---------------- */
-const mem = {};
-const store = {
-  async get(k){
-    try{ const v=localStorage.getItem(k); if(v!==null) return JSON.parse(v); }catch(e){}
-    try{ if(window.storage){const r=await window.storage.get(k); return r?JSON.parse(r.value):null;} }catch(e){}
-    return mem[k]!==undefined?mem[k]:null;
-  },
-  async set(k,v){
-    mem[k]=v;
-    try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){}
-    try{ if(window.storage){await window.storage.set(k,JSON.stringify(v));} }catch(e){}
+/* ---------------- backend API layer ---------------- */
+let currentUser = null;
+
+async function api(path, opts={}){
+  const res = await fetch('/api'+path, {
+    credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    ...opts,
+    body: opts.body!==undefined ? JSON.stringify(opts.body) : undefined
+  });
+  let payload=null;
+  try{ payload = await res.json(); }catch(e){}
+  if(!res.ok){
+    const err = new Error((payload && payload.error) || ('Error '+res.status));
+    err.status = res.status;
+    throw err;
   }
-};
+  return payload;
+}
+
+/* debounced + coalesced save of the whole data blob */
+let saveTimer=null, savePending=false, saveInFlight=false;
+function setSync(state){
+  const el=document.getElementById('syncState'); if(!el) return;
+  el.textContent = state;
+  el.className = 'sync ' + (state==='Guardado'?'ok':state==='Error al guardar'?'bad':'');
+}
+async function flushSave(){
+  if(saveInFlight){ savePending=true; return; }
+  saveInFlight=true; savePending=false;
+  setSync('Guardando…');
+  try{
+    await api('/data', {method:'PUT', body:{data}});
+    setSync('Guardado');
+  }catch(e){
+    setSync('Error al guardar');
+    savePending=true;
+    if(e.status===401){ location.reload(); return; }
+    setTimeout(flushSave, 4000);
+  }finally{
+    saveInFlight=false;
+    if(savePending) flushSave();
+  }
+}
 
 /* ---------------- default data ---------------- */
 const COLORS=['#ef4444','#f97316','#facc15','#22c55e','#84cc16','#3b82f6','#38bdf8','#a855f7','#ec4899','#f5f5f5','#9ca3af','#374151','#8b5e3c','#ca8a04','#cbd5e1'];
@@ -396,16 +475,97 @@ function cur(){return data.settings.cur||'$'}
 function money(n){return cur()+' '+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function gramCost(f){return f.spoolWeight>0? f.spoolPrice/f.spoolWeight : 0}
 
-/* ---------------- boot ---------------- */
+/* ---------------- boot / auth ---------------- */
+const DEFAULT_SETTINGS = { cur:'$', kwh:2.8, hour:0, biz:'', iva:0, round:0 };
+
 (async function boot(){
-  const saved = await store.get('extrudeflow_data');
-  if(saved) data = saved;
+  try{
+    currentUser = await api('/auth/me');
+  }catch(e){
+    document.getElementById('login').classList.add('show');
+    return;
+  }
+  await startApp();
+})();
+
+async function doLogin(ev){
+  if(ev) ev.preventDefault();
+  const u=document.getElementById('lg_user').value.trim();
+  const p=document.getElementById('lg_pass').value;
+  const btn=document.getElementById('lg_btn');
+  const msg=document.getElementById('lg_msg');
+  msg.textContent='';
+  if(!u||!p){ msg.textContent='Escribe usuario y contraseña.'; return; }
+  btn.disabled=true; btn.textContent='Entrando…';
+  try{
+    currentUser = await api('/auth/login', {method:'POST', body:{username:u, password:p}});
+    document.getElementById('lg_pass').value='';
+    document.getElementById('login').classList.remove('show');
+    await startApp();
+  }catch(e){
+    msg.textContent = e.message || 'No se pudo iniciar sesión.';
+  }finally{
+    btn.disabled=false; btn.textContent='Entrar';
+  }
+}
+
+async function startApp(){
+  let serverData=null;
+  try{ const r=await api('/data'); serverData=r.data; }catch(e){}
+
+  if(serverData && typeof serverData==='object' && Object.keys(serverData).length){
+    data = serverData;
+  }else{
+    // one-time offer to import data saved on this device
+    let local=null;
+    try{ local=JSON.parse(localStorage.getItem('extrudeflow_data')||'null'); }catch(e){}
+    const hasLocal = local && ((local.figures&&local.figures.length)||(local.printers&&local.printers.length)||(local.filaments&&local.filaments.length));
+    if(hasLocal && !localStorage.getItem('extrudeflow_migrated')){
+      if(confirm('Se encontraron datos guardados en este dispositivo. ¿Importarlos a la cuenta "'+currentUser.username+'"?')){
+        data = local;
+        await flushSave();
+      }
+      localStorage.setItem('extrudeflow_migrated','1');
+    }
+  }
+
+  // normalize shape so old/partial blobs can't break the calculator
+  data.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings||{});
+  data.printers = Array.isArray(data.printers)?data.printers:[];
+  data.filaments = Array.isArray(data.filaments)?data.filaments:[];
+  data.figures = Array.isArray(data.figures)?data.figures:[];
+
+  const who=document.getElementById('whoami'); if(who) who.textContent=currentUser.username;
+  const adminLink=document.getElementById('adminLink');
+  if(adminLink) adminLink.style.display = currentUser.role==='admin' ? '' : 'none';
+
+  document.body.classList.add('authed');
   refreshCurrencyLabels();
   renderAll();
   bindCalc();
-})();
+}
 
-async function persist(){ await store.set('extrudeflow_data', data); }
+async function doLogout(){
+  try{ await api('/auth/logout', {method:'POST'}); }catch(e){}
+  location.reload();
+}
+
+async function changeMyPassword(){
+  const current = prompt('Tu contraseña actual:');
+  if(current===null) return;
+  const next = prompt('Nueva contraseña (mínimo 8 caracteres):');
+  if(next===null) return;
+  if(next.length<8){ toast('Muy corta'); return; }
+  try{
+    await api('/auth/change-password', {method:'POST', body:{current, next}});
+    toast('Contraseña actualizada');
+  }catch(e){ toast(e.message||'No se pudo'); }
+}
+
+function persist(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 600);
+}
 
 function refreshCurrencyLabels(){
   const c=cur();
