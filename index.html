@@ -228,6 +228,19 @@
     border-radius:9px;padding:9px 0;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
   }
   .toggle-row button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+  /* swipe-to-delete rows */
+  .swipe-wrap{position:relative;overflow:hidden}
+  .swipe-wrap:last-child .swipe-face{border-bottom:none}
+  .swipe-del{
+    position:absolute;top:0;right:0;bottom:0;width:96px;border:none;cursor:pointer;
+    background:var(--danger);color:#450a0a;font-family:inherit;font-weight:700;font-size:14px;
+  }
+  .swipe-face{
+    position:relative;z-index:1;background:var(--panel);
+    transition:transform .22s cubic-bezier(.2,.8,.25,1);touch-action:pan-y;
+  }
+  .swipe-face.dragging{transition:none}
 </style>
 </head>
 <body>
@@ -626,6 +639,7 @@ function refreshCurrencyLabels(){
 
 /* ---------------- navigation ---------------- */
 function go(v){
+  if(typeof closeSwipe==='function') closeSwipe();
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
@@ -664,13 +678,90 @@ function renderFilaments(){
 
 function renderFigures(){
   const el=document.getElementById('figList');
+  openSwipe=null;
   if(!data.figures.length){el.innerHTML='<div class="empty">No has guardado figuras.<br>Cotiza una y toca “Guardar figura”.</div>';return}
   el.innerHTML=data.figures.slice().reverse().map(f=>`
-    <div class="list-item" onclick="loadFigure('${f.id}')">
-      <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo</div></div>
-      <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
-      <span class="chev">›</span>
+    <div class="swipe-wrap">
+      <button class="swipe-del" onclick="delFigure('${f.id}')">Eliminar</button>
+      <div class="list-item swipe-face" onclick="tapFigure(event,'${f.id}')">
+        <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo</div></div>
+        <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
+        <span class="chev">›</span>
+      </div>
     </div>`).join('');
+  bindSwipe(el);
+}
+
+/* ---------------- swipe-to-delete ---------------- */
+let openSwipe=null;
+function closeSwipe(){
+  if(openSwipe){ openSwipe.style.transform=''; openSwipe.classList.remove('open'); openSwipe=null; }
+}
+function tapFigure(e, fid){
+  const face=e.currentTarget;
+  if(face._noClick) return;
+  if(openSwipe){ closeSwipe(); return; }
+  loadFigure(fid);
+}
+function bindSwipe(container){
+  const W=96;
+  container.querySelectorAll('.swipe-face').forEach(face=>{
+    let x0=0,y0=0,dx=0,dragging=false,decided=false,horiz=false;
+    const start=(x,y)=>{ x0=x;y0=y;dx=0;dragging=true;decided=false;horiz=false; face.classList.add('dragging'); };
+    const move=(x,y)=>{
+      if(!dragging) return;
+      const mx=x-x0, my=y-y0;
+      if(!decided){
+        if(Math.abs(mx)<6 && Math.abs(my)<6) return;
+        decided=true; horiz=Math.abs(mx)>Math.abs(my)+2;
+        if(horiz && openSwipe && openSwipe!==face) closeSwipe();
+      }
+      if(!horiz) return;
+      const base = face===openSwipe ? -W : 0;
+      dx = Math.max(-W-24, Math.min(0, base+mx));
+      face.style.transform='translateX('+dx+'px)';
+    };
+    const end=()=>{
+      if(!dragging) return;
+      dragging=false; face.classList.remove('dragging');
+      if(!horiz){ return; }
+      face._noClick=true; setTimeout(()=>{ face._noClick=false; }, 350);
+      const open = dx < -W*0.4;
+      face.style.transform = open ? 'translateX(-'+W+'px)' : '';
+      face.classList.toggle('open', open);
+      if(open) openSwipe=face; else if(openSwipe===face) openSwipe=null;
+    };
+    face.addEventListener('touchstart',e=>start(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+    face.addEventListener('touchmove',e=>{ move(e.touches[0].clientX,e.touches[0].clientY); if(horiz&&decided&&e.cancelable) e.preventDefault(); },{passive:false});
+    face.addEventListener('touchend',end);
+    face.addEventListener('touchcancel',end);
+    face.addEventListener('mousedown',e=>{
+      start(e.clientX,e.clientY);
+      const mm=ev=>move(ev.clientX,ev.clientY);
+      const mu=()=>{ end(); window.removeEventListener('mousemove',mm); window.removeEventListener('mouseup',mu); };
+      window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu);
+    });
+  });
+}
+document.addEventListener('click',e=>{
+  if(openSwipe && !openSwipe.closest('.swipe-wrap').contains(e.target)){
+    closeSwipe();
+    if(e.target.closest && e.target.closest('.swipe-face')){ e.stopPropagation(); e.preventDefault(); }
+  }
+},true);
+
+function delFigure(fid){
+  const idx=data.figures.findIndex(x=>x.id===fid);
+  if(idx<0) return;
+  const removed=data.figures[idx];
+  data.figures.splice(idx,1);
+  if(editingFigureId===fid) editingFigureId=null;
+  openSwipe=null;
+  persist(); renderFigures(); calc();
+  toast('Figura eliminada', { label:'Deshacer', fn:()=>{
+    data.figures.splice(Math.min(idx,data.figures.length),0,removed);
+    persist(); renderFigures(); calc(); toast('Figura restaurada');
+  }});
 }
 
 function renderSettings(){
@@ -1267,7 +1358,16 @@ function importData(ev){
 /* ---------------- utils ---------------- */
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 let toastT;
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1600)}
+function toast(msg, action){
+  const t=document.getElementById('toast');
+  t.innerHTML = esc(msg) + (action ? ' · <b style="text-decoration:underline">'+esc(action.label)+'</b>' : '');
+  t.style.pointerEvents = action ? 'auto' : 'none';
+  t.style.cursor = action ? 'pointer' : '';
+  t.onclick = action ? ()=>{ t.classList.remove('show'); t.onclick=null; action.fn(); } : null;
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>{ t.classList.remove('show'); t.onclick=null; }, action ? 4500 : 1600);
+}
 
 /* ---------------- PWA service worker ---------------- */
 if('serviceWorker' in navigator){
