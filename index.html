@@ -241,6 +241,30 @@
     transition:transform .22s cubic-bezier(.2,.8,.25,1);touch-action:pan-y;
   }
   .swipe-face.dragging{transition:none}
+
+  /* time wheels (carousel picker) */
+  .wheelset{display:flex;align-items:center;gap:5px}
+  .wheelbox{position:relative;height:96px}
+  .wheelbox::after{
+    content:'';position:absolute;left:2px;right:2px;top:50%;height:32px;
+    transform:translateY(-50%);pointer-events:none;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  }
+  .wheel{
+    position:relative;height:96px;width:50px;overflow-y:auto;
+    scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;text-align:center;
+    background:#000;border:1px solid var(--line);border-radius:9px;
+    -webkit-mask-image:linear-gradient(180deg,transparent,#000 30%,#000 70%,transparent);
+            mask-image:linear-gradient(180deg,transparent,#000 30%,#000 70%,transparent);
+  }
+  .wheel::-webkit-scrollbar{display:none}
+  .wheel .opt{
+    height:32px;line-height:32px;font-size:16px;color:var(--ink-faint);
+    scroll-snap-align:center;font-variant-numeric:tabular-nums;cursor:pointer;transition:color .12s;
+  }
+  .wheel .opt.sel{color:var(--ink);font-weight:700}
+  .wheel .pad{height:32px}
 </style>
 </head>
 <body>
@@ -276,9 +300,11 @@
       </div>
       <div class="row">
         <div class="lbl">Tiempo de impresión</div>
-        <div class="right">
-          <input class="num" id="c_h" type="number" min="0" value="1" style="width:60px"><span class="unit">h</span>
-          <input class="num" id="c_m" type="number" min="0" max="59" value="0" style="width:60px"><span class="unit">min</span>
+        <div class="right wheelset">
+          <input type="hidden" id="c_h" value="1">
+          <input type="hidden" id="c_m" value="0">
+          <div class="wheelbox"><div class="wheel" id="wheel_h" data-target="c_h"></div></div><span class="unit">h</span>
+          <div class="wheelbox"><div class="wheel" id="wheel_m" data-target="c_m"></div></div><span class="unit">min</span>
         </div>
       </div>
       <div class="row">
@@ -817,7 +843,66 @@ function refreshFilOptions(line){
   sel.innerHTML=filOptionsHTML(cur);
 }
 
+/* ---------------- time wheels (carousel picker) ---------------- */
+let wheelsReady=false, wheelSyncing=false;
+
+function buildWheel(el, max){
+  let html='<div class="pad"></div>';
+  for(let i=0;i<=max;i++) html+='<div class="opt" data-v="'+i+'">'+i+'</div>';
+  html+='<div class="pad"></div>';
+  el.innerHTML=html;
+  let st;
+  el.addEventListener('scroll',()=>{ clearTimeout(st); st=setTimeout(()=>settleWheel(el),110); },{passive:true});
+  el.querySelectorAll('.opt').forEach(o=>o.addEventListener('click',()=>scrollWheelTo(el,+o.dataset.v,true)));
+}
+function wheelCenterOpt(el){
+  const mid=el.scrollTop+el.clientHeight/2;
+  let best=null,bd=1e9;
+  el.querySelectorAll('.opt').forEach(o=>{
+    const d=Math.abs((o.offsetTop+o.offsetHeight/2)-mid);
+    if(d<bd){ bd=d; best=o; }
+  });
+  return best;
+}
+function markSel(el,o){ el.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)); }
+function settleWheel(el){
+  const o=wheelCenterOpt(el); if(!o) return;
+  markSel(el,o);
+  const top=o.offsetTop-(el.clientHeight-o.offsetHeight)/2;
+  if(Math.abs(el.scrollTop-top)>1) el.scrollTo({top,behavior:'smooth'});
+  if(wheelSyncing) return;
+  const inp=document.getElementById(el.dataset.target);
+  if(inp && inp.value!==o.dataset.v){
+    inp.value=o.dataset.v;
+    inp.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+}
+function scrollWheelTo(el, v, smooth){
+  const o=el.querySelector('.opt[data-v="'+v+'"]'); if(!o) return;
+  markSel(el,o);
+  el.scrollTo({ top:o.offsetTop-(el.clientHeight-o.offsetHeight)/2, behavior: smooth?'smooth':'auto' });
+}
+function initTimeWheels(){
+  if(wheelsReady) return;
+  const h=document.getElementById('wheel_h'), m=document.getElementById('wheel_m');
+  if(!h||!m) return;
+  buildWheel(h,99); buildWheel(m,59);
+  wheelsReady=true;
+  syncWheels();
+}
+function syncWheels(){
+  const h=document.getElementById('wheel_h'), m=document.getElementById('wheel_m');
+  if(!h||!m) return;
+  wheelSyncing=true;
+  requestAnimationFrame(()=>{
+    scrollWheelTo(h, Math.max(0,Math.min(99, parseInt(document.getElementById('c_h').value,10)||0)), false);
+    scrollWheelTo(m, Math.max(0,Math.min(59, parseInt(document.getElementById('c_m').value,10)||0)), false);
+    setTimeout(()=>{ wheelSyncing=false; }, 260);
+  });
+}
+
 function bindCalc(){
+  initTimeWheels();
   ['c_name','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
@@ -884,6 +969,7 @@ function resetCalc(){
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
   document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
   document.getElementById('c_filWrap').innerHTML='';addFilLine();
+  syncWheels();
   calc();
 }
 
@@ -928,7 +1014,7 @@ function loadFigure(fid){
   document.getElementById('c_filWrap').innerHTML='';
   (f.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
   if(!f.fils||!f.fils.length) addFilLine();
-  go('calc'); calc();
+  go('calc'); syncWheels(); calc();
   toast('Figura cargada');
 }
 
