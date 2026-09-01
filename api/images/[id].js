@@ -19,7 +19,9 @@ export default async function handler(req, res) {
     res.statusCode = 200;
     res.setHeader('Content-Type', rows[0].mime);
     res.setHeader('Content-Length', buf.length);
-    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    // cache per-session only: the browser must re-request (and re-auth) once the cookie changes
+    res.setHeader('Cache-Control', 'private, max-age=604800');
+    res.setHeader('Vary', 'Cookie');
     return res.end(buf);
   }
 
