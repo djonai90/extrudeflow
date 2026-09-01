@@ -1416,23 +1416,18 @@ function renderRegistro(){
   const sum=month.reduce((s,im)=>{
     const q=+im.qty||1;
     s.n++; s.g+=impGrams(im)*q; s.h+=impHours(im);
-    s.income+=(+im.price||0); if(!im.paid) s.due+=(+im.price||0);
     s.cost+=(+im.cost||0);
     if(im.status==='fail') s.fail++;
     if(im.status==='reprint') s.reprint++;
     return s;
-  },{n:0,g:0,h:0,income:0,due:0,cost:0,fail:0,reprint:0});
-  const profit=sum.income-sum.cost;
+  },{n:0,g:0,h:0,cost:0,fail:0,reprint:0});
 
   document.getElementById('reg_monthLabel').textContent='Este mes · '+monthTitle(nowKey);
   document.getElementById('reg_stats').innerHTML=`
     <div class="stat"><div class="n">${sum.n}</div><div class="k">impresiones</div></div>
     <div class="stat"><div class="n">${Math.round(sum.g)}</div><div class="k">gramos</div></div>
     <div class="stat"><div class="n">${sum.h.toFixed(1)}</div><div class="k">horas</div></div>
-    <div class="stat"><div class="n money accent">${money(sum.income)}</div><div class="k">ingresos</div></div>
     <div class="stat"><div class="n money">${money(sum.cost)}</div><div class="k">costo</div></div>
-    <div class="stat"><div class="n money ${profit<0?'warn':''}">${money(profit)}</div><div class="k">ganancia</div></div>
-    <div class="stat"><div class="n money ${sum.due>0?'warn':''}">${money(sum.due)}</div><div class="k">por cobrar</div></div>
     <div class="stat"><div class="n">${sum.fail}</div><div class="k">fallidas</div></div>
     <div class="stat"><div class="n">${sum.reprint}</div><div class="k">reimpresiones</div></div>`;
 
@@ -1445,12 +1440,11 @@ function renderRegistro(){
     const g=impGrams(im),h=impHours(im);
     const cfg=[im.layerH&&(im.layerH+' mm'), im.infill&&(im.infill+'%')].filter(Boolean).join('/');
     const meta=[fmtDay(im.date), im.client&&esc(im.client), g&&(Math.round(g)+' g'), h&&((Math.round(h*10)/10)+' h'), cfg].filter(Boolean).join(' · ');
-    const badge=(+im.price>0)?(im.paid?'<span class="badge paid">pagado</span>':'<span class="badge due">por cobrar</span>'):'';
     html+=`<div class="list-item" onclick="openImpresion('${im.id}')">
       <span class="sdot ${im.status||'ok'}"></span>
       ${(im.photos&&im.photos[0])?`<img class="rowthumb" src="/api/images/${im.photos[0]}" alt="" loading="lazy">`:''}
       <div class="meta"><div class="t">${esc(im.name||'Sin nombre')}${(+im.qty>1)?' ×'+(+im.qty):''}</div><div class="s">${meta}</div></div>
-      <div class="val">${(+im.price>0)?`<b>${money(im.price)}</b>`:''}<div class="s">${badge}</div></div>
+      ${(+im.cost>0)?`<div class="val faint">${money(im.cost)}</div>`:''}
       <span class="chev">›</span>
     </div>`;
   });
@@ -1515,21 +1509,15 @@ function openImpresion(iid){
       <div class="section-label">Resultado</div>
       <div class="card">
         <div class="row"><div class="lbl">Estado</div><div class="right"><select id="im_status">${stOpt('ok')}${stOpt('fail')}${stOpt('reprint')}</select></div></div>
-      </div>
-
-      <div class="section-label">Dinero</div>
-      <div class="card">
-        <div class="row"><div class="lbl">Costo estimado <small id="im_costBreak"></small></div><div class="right"><b id="im_costVal">—</b></div></div>
-        <div class="row"><div class="lbl">Precio cobrado</div><div class="right"><input class="num" id="im_price" type="number" min="0" value="${+im.price||0}" style="width:80px"><span class="unit">${cur()}</span></div></div>
-        <div class="row"><div class="lbl muted">Ganancia</div><div class="right muted" id="im_profit">—</div></div>
-        <div class="row"><div class="lbl">Pagado</div><div class="right toggle-row" style="width:150px" id="im_paid">
-          <button type="button" data-v="1" class="${im.paid?'on':''}" onclick="pickToggle('im_paid',1)">Sí</button>
-          <button type="button" data-v="0" class="${im.paid?'':'on'}" onclick="pickToggle('im_paid',0)">No</button>
-        </div></div>
         <div class="row"><div class="lbl">Entregado</div><div class="right toggle-row" style="width:150px" id="im_deliv">
           <button type="button" data-v="1" class="${im.delivered?'on':''}" onclick="pickToggle('im_deliv',1)">Sí</button>
           <button type="button" data-v="0" class="${im.delivered?'':'on'}" onclick="pickToggle('im_deliv',0)">No</button>
         </div></div>
+      </div>
+
+      <div class="section-label">Costo</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Costo estimado <small id="im_costBreak"></small></div><div class="right"><b id="im_costVal">—</b></div></div>
       </div>
 
       <div class="section-label">Fotos — hasta 3</div>
@@ -1546,7 +1534,7 @@ function openImpresion(iid){
   const rows=(im.fils&&im.fils.length)?im.fils:[null];
   rows.forEach(x=> x ? addImpFilLine(x.filId,x.grams) : addImpFilLine());
   renderImpPhotos();
-  ['im_qty','im_h','im_m','im_printer','im_labor','im_price'].forEach(idn=>{
+  ['im_qty','im_h','im_m','im_printer','im_labor'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=updateImpCost;
   });
   updateImpCost();
@@ -1581,10 +1569,6 @@ function updateImpCost(){
   if(r.machine>0)  parts.push('máquina '+r.machine.toFixed(2));
   if(r.labor>0)    parts.push('manual '+r.labor.toFixed(2));
   document.getElementById('im_costBreak').textContent=parts.join(' · ');
-  const price=+document.getElementById('im_price').value||0;
-  const pe=document.getElementById('im_profit');
-  pe.textContent=money(price-r.total);
-  pe.style.color = price>0 ? (price-r.total>=0?'var(--accent)':'var(--danger)') : '';
 }
 
 function saveImpresion(iid){
@@ -1609,8 +1593,6 @@ function saveImpresion(iid){
     photos: impPhotos.slice(),
     status: document.getElementById('im_status').value,
     cost: Math.round(impComputeCost().total*100)/100,
-    price: +document.getElementById('im_price').value||0,
-    paid: !!document.querySelector('#im_paid button.on[data-v="1"]'),
     delivered: !!document.querySelector('#im_deliv button.on[data-v="1"]'),
     notes: document.getElementById('im_notes').value.trim()
   };
