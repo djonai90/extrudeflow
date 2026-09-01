@@ -784,6 +784,10 @@ function go(v){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',ventas:'Registro de ventas',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
   document.getElementById('hdrSub').textContent=subs[v]||'';
+  // refresh the view's dynamic content on entry (safety net for any missed in-place update)
+  if(v==='registro') renderRegistro();
+  if(v==='ventas') renderVentas();
+  if(v==='figs') renderFigures();
   if(v==='settings' && typeof refreshStorageInfo==='function') refreshStorageInfo();
   window.scrollTo(0,0);
 }
@@ -1643,7 +1647,7 @@ function saveImpresion(iid){
   };
   if(iid){const i=data.impresiones.findIndex(x=>x.id===iid); if(i>-1) data.impresiones[i]=obj; else data.impresiones.push(obj);}
   else data.impresiones.push(obj);
-  persist(); renderRegistro(); closeSheet(); toast(iid?'Impresión actualizada':'Impresión registrada');
+  closeSheet(); persist(); renderRegistro(); toast(iid?'Impresión actualizada':'Impresión registrada');
 }
 function delImpresion(iid){
   const idx=data.impresiones.findIndex(x=>x.id===iid);
@@ -1651,7 +1655,7 @@ function delImpresion(iid){
   const removed=data.impresiones[idx];
   data.impresiones.splice(idx,1);
   openSwipe=null;
-  persist(); renderRegistro(); closeSheet();
+  closeSheet(); persist(); renderRegistro();
   toast('Registro eliminado', { label:'Deshacer', fn:()=>{
     data.impresiones.splice(Math.min(idx,data.impresiones.length),0,removed);
     persist(); renderRegistro(); toast('Registro restaurado');
@@ -1823,7 +1827,7 @@ function saveVenta(vid){
   };
   if(vid){const k=data.ventas.findIndex(x=>x.id===vid); if(k>-1) data.ventas[k]=obj; else data.ventas.push(obj);}
   else data.ventas.push(obj);
-  persist(); renderVentas(); closeSheet(); toast(vid?'Venta actualizada':'Venta registrada');
+  closeSheet(); persist(); renderVentas(); toast(vid?'Venta actualizada':'Venta registrada');
 }
 function delVenta(vid){
   const idx=data.ventas.findIndex(x=>x.id===vid);
@@ -1831,7 +1835,7 @@ function delVenta(vid){
   const removed=data.ventas[idx];
   data.ventas.splice(idx,1);
   openSwipe=null;
-  persist(); renderVentas(); closeSheet();
+  closeSheet(); persist(); renderVentas();
   toast('Venta eliminada', { label:'Deshacer', fn:()=>{
     data.ventas.splice(Math.min(idx,data.ventas.length),0,removed);
     persist(); renderVentas(); toast('Venta restaurada');
