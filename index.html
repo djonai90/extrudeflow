@@ -1003,6 +1003,19 @@ function syncWheels(){
   requestAnimationFrame(go);
 }
 
+// Build + position a fresh pair of h/min wheels (used by the impresión sheet, rebuilt each open)
+function mountWheels(hWheelId, mWheelId, hInputId, mInputId, maxH){
+  const h=document.getElementById(hWheelId), m=document.getElementById(mWheelId);
+  if(!h||!m) return;
+  buildWheel(h, maxH); buildWheel(m, 59);
+  const go=()=>{
+    scrollWheelTo(h, Math.max(0,Math.min(maxH, parseInt(document.getElementById(hInputId).value,10)||0)), false);
+    scrollWheelTo(m, Math.max(0,Math.min(59, parseInt(document.getElementById(mInputId).value,10)||0)), false);
+  };
+  go();
+  requestAnimationFrame(go);
+}
+
 function bindCalc(){
   initTimeWheels();
   renderCalcPhotos();
@@ -1489,9 +1502,11 @@ function openImpresion(iid){
       <div class="section-label">Máquina y material</div>
       <div class="card">
         <div class="row"><div class="lbl">Impresora</div><div class="right"><select id="im_printer">${printerOpts}</select></div></div>
-        <div class="row"><div class="lbl">Tiempo real</div><div class="right">
-          <input class="num" id="im_h" type="number" min="0" value="${+im.timeH||0}" style="width:56px"><span class="unit">h</span>
-          <input class="num" id="im_m" type="number" min="0" max="59" value="${+im.timeM||0}" style="width:56px"><span class="unit">min</span>
+        <div class="row"><div class="lbl">Tiempo de impresión</div><div class="right wheelset">
+          <input type="hidden" id="im_h" value="${+im.timeH||0}">
+          <input type="hidden" id="im_m" value="${+im.timeM||0}">
+          <div class="wheelbox"><div class="wheel" id="im_wheel_h" data-target="im_h"></div></div><span class="unit">h</span>
+          <div class="wheelbox"><div class="wheel" id="im_wheel_m" data-target="im_m"></div></div><span class="unit">min</span>
         </div></div>
         <div class="row"><div class="lbl">Trabajo manual <small>soportes, lijado, pintura…</small></div><div class="right"><input class="num" id="im_labor" type="number" min="0" value="${+im.laborMin||0}" style="width:56px"><span class="unit">min</span></div></div>
       </div>
@@ -1534,6 +1549,7 @@ function openImpresion(iid){
   const rows=(im.fils&&im.fils.length)?im.fils:[null];
   rows.forEach(x=> x ? addImpFilLine(x.filId,x.grams) : addImpFilLine());
   renderImpPhotos();
+  mountWheels('im_wheel_h','im_wheel_m','im_h','im_m',120);
   ['im_qty','im_h','im_m','im_printer','im_labor'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=updateImpCost;
   });
