@@ -299,6 +299,27 @@
         <input class="wide" id="c_name" placeholder="Nombre de la figura (ej. Llavero)">
       </div>
       <div class="row">
+        <div class="lbl">Tipo de pieza</div>
+        <div class="right"><select id="c_type">
+          <option value="">— Sin especificar —</option>
+          <option>Llavero</option>
+          <option>Figura / coleccionable</option>
+          <option>Juguete</option>
+          <option>Decoración</option>
+          <option>Maceta / jardinería</option>
+          <option>Organizador / almacenamiento</option>
+          <option>Pieza funcional</option>
+          <option>Repuesto / refacción</option>
+          <option>Herramienta / plantilla</option>
+          <option>Prototipo</option>
+          <option>Joyería / accesorio</option>
+          <option>Cosplay / prop</option>
+          <option>Regalo personalizado</option>
+          <option>Educativo / didáctico</option>
+          <option>Otro</option>
+        </select></div>
+      </div>
+      <div class="row">
         <div class="lbl">Cantidad de piezas <small>tiempo y gramos son por pieza</small></div>
         <div class="right"><input class="num" id="c_qty" type="number" min="1" value="1" style="width:64px"><span class="unit">pz</span></div>
       </div>
@@ -728,7 +749,7 @@ function renderFigures(){
     <div class="swipe-wrap">
       <button class="swipe-del" onclick="delFigure('${f.id}')">Eliminar</button>
       <div class="list-item swipe-face" onclick="tapFigure(event,'${f.id}')">
-        <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}${(+f.qty>1)?' ×'+(+f.qty):''}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo${(f.snapshot.perPiece!=null)?' · '+money(f.snapshot.perPiece)+'/pz':''}</div></div>
+        <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}${(+f.qty>1)?' ×'+(+f.qty):''}</div><div class="s">${f.type?esc(f.type)+' · ':''}${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo${(f.snapshot.perPiece!=null)?' · '+money(f.snapshot.perPiece)+'/pz':''}</div></div>
         <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
         <span class="chev">›</span>
       </div>
@@ -926,7 +947,7 @@ function syncWheels(){
 
 function bindCalc(){
   initTimeWheels();
-  ['c_name','c_qty','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
+  ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
   calc();
@@ -994,6 +1015,7 @@ function calc(){
 function resetCalc(){
   editingFigureId=null;
   document.getElementById('c_name').value='';
+  document.getElementById('c_type').value='';
   document.getElementById('c_qty').value=1;
   document.getElementById('c_h').value=1;document.getElementById('c_m').value=0;
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
@@ -1011,6 +1033,7 @@ function saveFigure(){
   const fig={
     id:editingFigureId||id(),
     name:document.getElementById('c_name').value||'Sin nombre',
+    type:document.getElementById('c_type').value||'',
     qty:Math.max(1,Math.floor(+document.getElementById('c_qty').value||1)),
     timeH:+document.getElementById('c_h').value||0,
     timeM:+document.getElementById('c_m').value||0,
@@ -1035,6 +1058,7 @@ function loadFigure(fid){
   const f=data.figures.find(x=>x.id===fid); if(!f) return;
   editingFigureId=fid;
   document.getElementById('c_name').value=f.name;
+  document.getElementById('c_type').value=f.type||'';
   document.getElementById('c_qty').value=Math.max(1,Math.floor(+f.qty||1));
   document.getElementById('c_h').value=f.timeH;
   document.getElementById('c_m').value=f.timeM;
