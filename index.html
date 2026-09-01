@@ -883,7 +883,7 @@ function scrollWheelTo(el, v, smooth){
   const o=el.querySelector('.opt[data-v="'+v+'"]'); if(!o) return;
   markSel(el,o);
   el.scrollTo({ top:o.offsetTop-(el.clientHeight-o.offsetHeight)/2, behavior: smooth?'smooth':'auto' });
-  if(!smooth) commitWheel(el,o);
+  commitWheel(el,o);
 }
 function initTimeWheels(){
   if(wheelsReady) return;
