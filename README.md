@@ -12,9 +12,12 @@ Gestor y calculadora de cotización de impresión 3D.
 |--------------|----------|
 | `users`      | usuario, hash de contraseña (scrypt), rol (`user`/`admin`), activo, bloqueo por intentos fallidos |
 | `sessions`   | sesión por cookie `ef_session` (HttpOnly, Secure, SameSite=Lax). Se guarda el **hash** del token. 30 días, deslizante |
-| `user_data`  | un registro por usuario con todo el objeto `data` de la app (settings, printers, filaments, figures) como `jsonb` |
+| `user_data`  | un registro por usuario con todo el objeto `data` de la app (settings, printers, filaments, figures, impresiones) como `jsonb` |
+| `images`     | fotos de piezas: `bytea` redimensionado en el cliente (~200 KB), referenciado por id desde figures/impresiones. `ON DELETE CASCADE` por usuario |
 
-Cada usuario solo lee/escribe su propio `user_data`. El rol `admin` puede gestionar usuarios vía `/api/admin/*` y `admin.html`.
+Cada usuario solo lee/escribe su propio `user_data` y sus `images`. El rol `admin` puede gestionar usuarios vía `/api/admin/*` y `admin.html`.
+
+> Si actualizas desde una versión anterior, corre `node --env-file=.env scripts/init-db.mjs` de nuevo (idempotente) para crear la tabla `images`.
 
 ### Endpoints
 

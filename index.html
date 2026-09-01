@@ -265,6 +265,29 @@
   }
   .wheel .opt.sel{color:var(--ink);font-weight:700}
   .wheel .pad{height:32px}
+
+  /* photos */
+  .photos{display:flex;gap:8px;flex-wrap:wrap;padding:14px 16px}
+  .photo{position:relative;width:74px;height:74px;border-radius:10px;overflow:hidden;background:#000;border:1px solid var(--line)}
+  .photo img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .photo .rm{
+    position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:none;cursor:pointer;
+    border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;line-height:20px;
+  }
+  .photo.up{display:flex;align-items:center;justify-content:center;color:var(--ink-faint);font-size:18px}
+  .photo-add{
+    width:74px;height:74px;border-radius:10px;border:1px dashed var(--line);background:transparent;
+    color:var(--ink-soft);font-family:inherit;font-size:11px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  }
+  .photo-add svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .rowthumb{width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#000}
+  #lightbox{
+    position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.93);
+    display:none;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;
+  }
+  #lightbox.show{display:flex}
+  #lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
 </style>
 </head>
 <body>
@@ -337,6 +360,9 @@
         <div class="right"><select id="c_printer"></select></div>
       </div>
     </div>
+
+    <div class="section-label">Fotos de la pieza — hasta 3</div>
+    <div class="card"><div class="photos" id="c_photos"></div></div>
 
     <div class="section-label">Configuración de impresión</div>
     <div class="card">
@@ -506,6 +532,7 @@
 
     <div class="section-label">Datos</div>
     <div class="card">
+      <div class="row"><div class="lbl">Almacenamiento de fotos</div><div class="right faint" id="storageInfo">—</div></div>
       <div class="row" style="cursor:pointer" onclick="exportData()"><div class="lbl">Exportar todo (JSON)</div><div class="right chev">›</div></div>
       <div class="row" style="cursor:pointer" onclick="document.getElementById('importFile').click()"><div class="lbl">Importar respaldo</div><div class="right chev">›</div></div>
     </div>
@@ -544,6 +571,7 @@
 
 <!-- ============ SHEETS ============ -->
 <div class="scrim" id="scrim"><div class="sheet" id="sheet"></div></div>
+<div id="lightbox"></div>
 
 <div class="toast" id="toast"></div>
 
@@ -613,6 +641,8 @@ let data = {
   impresiones:[]
 };
 let editingFigureId=null;
+let calcPhotos=[];   // image ids for the figure being edited in the calculator
+let impPhotos=[];    // image ids for the impresión sheet currently open
 
 function id(){return Math.random().toString(36).slice(2,9)}
 function cur(){return data.settings.cur||'$'}
@@ -698,6 +728,7 @@ async function startApp(){
   refreshCurrencyLabels();
   renderAll();
   bindCalc();
+  gcImages();
 }
 
 async function doLogout(){
@@ -735,6 +766,7 @@ function go(v){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
   const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
   document.getElementById('hdrSub').textContent=subs[v]||'';
+  if(v==='settings' && typeof refreshStorageInfo==='function') refreshStorageInfo();
   window.scrollTo(0,0);
 }
 
@@ -774,6 +806,7 @@ function renderFigures(){
     <div class="swipe-wrap">
       <button class="swipe-del" onclick="delFigure('${f.id}')">Eliminar</button>
       <div class="list-item swipe-face" onclick="tapFigure(event,'${f.id}')">
+        ${(f.photos&&f.photos[0])?`<img class="rowthumb" src="/api/images/${f.photos[0]}" alt="" loading="lazy">`:''}
         <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}${(+f.qty>1)?' ×'+(+f.qty):''}</div><div class="s">${f.type?esc(f.type)+' · ':''}${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo${(f.snapshot.perPiece!=null)?' · '+money(f.snapshot.perPiece)+'/pz':''}</div></div>
         <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
         <span class="chev">›</span>
@@ -972,6 +1005,7 @@ function syncWheels(){
 
 function bindCalc(){
   initTimeWheels();
+  renderCalcPhotos();
   ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_nozzle','c_layerH','c_infill','c_support','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
@@ -1050,6 +1084,7 @@ function resetCalc(){
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
   document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
   document.getElementById('c_filWrap').innerHTML='';addFilLine();
+  calcPhotos=[]; renderCalcPhotos();
   syncWheels();
   calc();
 }
@@ -1076,6 +1111,7 @@ function saveFigure(){
     labor:+document.getElementById('c_labor').value||0,
     extra:+document.getElementById('c_extra').value||0,
     fils,
+    photos:calcPhotos.slice(),
     snapshot:{total:r.total,sale:r.sale,perPiece:r.perPiece}
   };
   if(editingFigureId){
@@ -1107,6 +1143,7 @@ function loadFigure(fid){
   document.getElementById('c_filWrap').innerHTML='';
   (f.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
   if(!f.fils||!f.fils.length) addFilLine();
+  calcPhotos=(f.photos||[]).slice(); renderCalcPhotos();
   go('calc'); syncWheels(); calc();
   toast('Figura cargada');
 }
@@ -1405,6 +1442,7 @@ function renderRegistro(){
     const badge=(+im.price>0)?(im.paid?'<span class="badge paid">pagado</span>':'<span class="badge due">por cobrar</span>'):'';
     html+=`<div class="list-item" onclick="openImpresion('${im.id}')">
       <span class="sdot ${im.status||'ok'}"></span>
+      ${(im.photos&&im.photos[0])?`<img class="rowthumb" src="/api/images/${im.photos[0]}" alt="" loading="lazy">`:''}
       <div class="meta"><div class="t">${esc(im.name||'Sin nombre')}${(+im.qty>1)?' ×'+(+im.qty):''}</div><div class="s">${meta}</div></div>
       <div class="val">${(+im.price>0)?`<b>${money(im.price)}</b>`:''}<div class="s">${badge}</div></div>
       <span class="chev">›</span>
@@ -1433,6 +1471,7 @@ function pickToggle(groupId,v){
 function openImpresion(iid){
   const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,status:'ok',nozzle:'0.4',layerH:0.2,infill:15,support:'Sin soporte',cost:0,price:0,paid:false,delivered:false,notes:''};
   const im=iid?Object.assign({},blank,data.impresiones.find(x=>x.id===iid)||{}):blank;
+  impPhotos=(im.photos||[]).slice();
   const printerOpts='<option value="">— ninguna —</option>'+data.printers.map(p=>`<option value="${p.id}" ${p.id===im.printerId?'selected':''}>${esc(p.name)}</option>`).join('');
   const stOpt=k=>`<option value="${k}" ${im.status===k?'selected':''}>${IMP_STATUS[k]}</option>`;
   openSheet('Impresión', `
@@ -1483,6 +1522,9 @@ function openImpresion(iid){
         </div></div>
       </div>
 
+      <div class="section-label">Fotos — hasta 3</div>
+      <div class="card"><div class="photos" id="im_photos"></div></div>
+
       <div class="section-label">Notas</div>
       <div class="card"><div class="row"><input class="wide" id="im_notes" placeholder="Observaciones, ajustes, problemas…" value="${esc(im.notes)}"></div></div>
 
@@ -1493,6 +1535,7 @@ function openImpresion(iid){
     </div>`);
   const rows=(im.fils&&im.fils.length)?im.fils:[null];
   rows.forEach(x=> x ? addImpFilLine(x.filId,x.grams) : addImpFilLine());
+  renderImpPhotos();
 }
 
 function saveImpresion(iid){
@@ -1513,6 +1556,7 @@ function saveImpresion(iid){
     layerH: +document.getElementById('im_layerH').value||0,
     infill: +document.getElementById('im_infill').value||0,
     support: document.getElementById('im_support').value||'',
+    photos: impPhotos.slice(),
     status: document.getElementById('im_status').value,
     cost: +document.getElementById('im_cost').value||0,
     price: +document.getElementById('im_price').value||0,
@@ -1549,6 +1593,119 @@ function importData(ev){
   const rd=new FileReader();
   rd.onload=()=>{try{data=JSON.parse(rd.result);normalizeData();persist();refreshCurrencyLabels();renderAll();bindCalc();toast('Respaldo importado');}catch(e){toast('Archivo inválido')}};
   rd.readAsText(file);ev.target.value='';
+}
+
+/* ---------------- photos ---------------- */
+const PHOTO_MAX=3;
+
+function fileToImage(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file);
+    const im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(url); res(im); };
+    im.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error('img')); };
+    im.src=url;
+  });
+}
+async function resizeImage(file, maxEdge=1400, quality=0.72){
+  let src,cw,ch;
+  try{ src=await createImageBitmap(file,{imageOrientation:'from-image'}); cw=src.width; ch=src.height; }
+  catch(e){
+    try{ src=await createImageBitmap(file); cw=src.width; ch=src.height; }
+    catch(e2){ src=await fileToImage(file); cw=src.naturalWidth; ch=src.naturalHeight; }
+  }
+  let w=cw,h=ch,m=Math.max(w,h);
+  if(m>maxEdge){ const s=maxEdge/m; w=Math.round(w*s); h=Math.round(h*s); }
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(src,0,0,w,h);
+  if(src.close) src.close();
+  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
+  if(!blob) throw new Error('No se pudo procesar la imagen');
+  return blob;
+}
+async function uploadImage(file){
+  const blob=await resizeImage(file);
+  const res=await fetch('/api/images',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'image/jpeg'},body:blob});
+  if(!res.ok){
+    let m='No se pudo subir la foto';
+    try{ m=(await res.json()).error||m; }catch(e){}
+    if(res.status===401){ location.reload(); }
+    throw new Error(m);
+  }
+  return (await res.json()).id;
+}
+function deleteImageRemote(imgId){
+  fetch('/api/images/'+imgId,{method:'DELETE',credentials:'same-origin'}).catch(()=>{});
+}
+function pickPhoto(cb){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*';
+  inp.onchange=()=>{ if(inp.files&&inp.files[0]) cb(inp.files[0]); };
+  inp.click();
+}
+function openLightbox(id){
+  const lb=document.getElementById('lightbox');
+  lb.innerHTML='<img src="/api/images/'+id+'" alt="">';
+  lb.classList.add('show');
+}
+document.getElementById('lightbox').addEventListener('click',()=>{
+  const lb=document.getElementById('lightbox'); lb.classList.remove('show'); lb.innerHTML='';
+});
+
+// Renders a photo strip into #containerId from `ids`; calls onChange(newIds) on add/remove.
+function renderPhotoStrip(containerId, ids, onChange){
+  const el=document.getElementById(containerId); if(!el) return;
+  el.innerHTML = ids.map(id=>`
+    <div class="photo">
+      <img src="/api/images/${id}" alt="" onclick="openLightbox('${id}')">
+      <button type="button" class="rm" data-id="${id}">×</button>
+    </div>`).join('')
+    + (ids.length<PHOTO_MAX ? `<button type="button" class="photo-add">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Foto</button>` : '');
+  el.querySelectorAll('.rm').forEach(b=>b.onclick=()=>{
+    deleteImageRemote(b.dataset.id);
+    onChange(ids.filter(x=>x!==b.dataset.id));
+  });
+  const add=el.querySelector('.photo-add');
+  if(add) add.onclick=()=> pickPhoto(async file=>{
+    const ph=document.createElement('div'); ph.className='photo up'; ph.textContent='…';
+    el.insertBefore(ph, add);
+    add.disabled=true;
+    try{
+      const newId=await uploadImage(file);
+      onChange([...ids, newId]);
+    }catch(e){
+      ph.remove(); add.disabled=false;
+      toast(e.message||'No se pudo subir la foto');
+    }
+  });
+}
+function renderCalcPhotos(){
+  renderPhotoStrip('c_photos', calcPhotos, nid=>{ calcPhotos=nid; renderCalcPhotos(); });
+}
+function renderImpPhotos(){
+  renderPhotoStrip('im_photos', impPhotos, nid=>{ impPhotos=nid; renderImpPhotos(); });
+}
+
+async function refreshStorageInfo(){
+  const el=document.getElementById('storageInfo'); if(!el) return;
+  try{
+    const r=await fetch('/api/images',{credentials:'same-origin'});
+    if(!r.ok) return;
+    const u=await r.json();
+    const mb=(u.bytes/1048576);
+    const limMb=Math.round(u.limitBytes/1048576);
+    el.textContent=`${u.images} ${u.images===1?'foto':'fotos'} · ${mb<10?mb.toFixed(1):Math.round(mb)} MB de ${limMb} MB`;
+    el.style.color = mb > limMb*0.9 ? 'var(--danger)' : '';
+  }catch(e){}
+}
+
+// delete images that no figure/impresión references any more (server keeps ones <1h old)
+function gcImages(){
+  const keep=[];
+  (data.figures||[]).forEach(f=>(f.photos||[]).forEach(id=>keep.push(id)));
+  (data.impresiones||[]).forEach(i=>(i.photos||[]).forEach(id=>keep.push(id)));
+  fetch('/api/images',{method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({keep})}).catch(()=>{});
 }
 
 /* ---------------- utils ---------------- */

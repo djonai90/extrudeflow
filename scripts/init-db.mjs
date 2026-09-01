@@ -37,6 +37,15 @@ const statements = [
      data       jsonb NOT NULL DEFAULT '{}'::jsonb,
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
+  `CREATE TABLE IF NOT EXISTS images (
+     id         text PRIMARY KEY,
+     user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     mime       text NOT NULL,
+     bytes      bytea NOT NULL,
+     size       integer NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS images_user_idx ON images (user_id)`,
 ];
 
 try {

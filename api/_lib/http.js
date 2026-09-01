@@ -24,6 +24,22 @@ export async function getBody(req) {
   try { return JSON.parse(raw); } catch { return {}; }
 }
 
+// Read a raw binary request body (for image uploads). Throws { httpStatus: 413 } past the cap.
+export async function readRawBody(req, maxBytes) {
+  if (Buffer.isBuffer(req.body)) {
+    if (req.body.length > maxBytes) throw Object.assign(new Error('Too large'), { httpStatus: 413 });
+    return req.body;
+  }
+  const chunks = [];
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > maxBytes) throw Object.assign(new Error('Too large'), { httpStatus: 413 });
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+}
+
 // CSRF hardening: reject cross-origin state-changing requests.
 // Same-origin fetches send an Origin header that matches Host; tools/curl send none.
 export function sameOrigin(req) {
