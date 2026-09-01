@@ -198,8 +198,9 @@
   body:not(.authed) nav{display:none}
 
   /* registro de impresiones */
-  nav button{font-size:10px}
-  nav button svg{width:21px;height:21px}
+  nav{padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
+  nav button{font-size:9px;gap:2px;padding:6px 1px}
+  nav button svg{width:20px;height:20px}
   input[type=date]{
     font-family:inherit;font-size:15.5px;color:var(--ink);color-scheme:dark;
     background:#000;border:1px solid var(--line);border-radius:9px;padding:8px 11px;outline:none;
@@ -444,6 +445,18 @@
   </div>
 </section>
 
+<!-- ============ VENTAS ============ -->
+<section class="view" id="v-ventas">
+  <div class="wrap">
+    <div class="section-label" id="vt_monthLabel">Este mes</div>
+    <div class="statgrid" id="vt_stats"></div>
+    <div style="padding:12px 0"><button class="btn block" onclick="openVenta()">+ Registrar venta</button></div>
+    <div class="section-label">Ventas</div>
+    <div class="card" id="vt_list"></div>
+    <p class="hint">Elige una figura cotizada o una impresión del registro (o captura una venta libre). El resumen de arriba es del mes en curso.</p>
+  </div>
+</section>
+
 <!-- ============ IMPRESORAS ============ -->
 <section class="view" id="v-printers">
   <div class="wrap">
@@ -554,6 +567,10 @@
   <button data-view="registro" onclick="go('registro')">
     <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M8.5 12.5l2.2 2.2 4.3-4.4"/></svg>
     Registro
+  </button>
+  <button data-view="ventas" onclick="go('ventas')">
+    <svg viewBox="0 0 24 24"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.4"/></svg>
+    Ventas
   </button>
   <button data-view="printers" onclick="go('printers')">
     <svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1"/><path d="M8 17h8v4H8z"/></svg>
@@ -696,6 +713,7 @@ function normalizeData(){
   data.filaments = Array.isArray(data.filaments)?data.filaments:[];
   data.figures = Array.isArray(data.figures)?data.figures:[];
   data.impresiones = Array.isArray(data.impresiones)?data.impresiones:[];
+  data.ventas = Array.isArray(data.ventas)?data.ventas:[];
 }
 
 async function startApp(){
@@ -764,7 +782,7 @@ function go(v){
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
+  const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',ventas:'Registro de ventas',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
   document.getElementById('hdrSub').textContent=subs[v]||'';
   if(v==='settings' && typeof refreshStorageInfo==='function') refreshStorageInfo();
   window.scrollTo(0,0);
@@ -772,7 +790,7 @@ function go(v){
 
 /* ---------------- render lists ---------------- */
 function renderAll(){
-  renderPrinters(); renderFilaments(); renderFigures(); renderRegistro(); renderSettings(); renderCalcSelectors();
+  renderPrinters(); renderFilaments(); renderFigures(); renderRegistro(); renderVentas(); renderSettings(); renderCalcSelectors();
 }
 
 function renderPrinters(){
@@ -1637,6 +1655,186 @@ function delImpresion(iid){
   toast('Registro eliminado', { label:'Deshacer', fn:()=>{
     data.impresiones.splice(Math.min(idx,data.impresiones.length),0,removed);
     persist(); renderRegistro(); toast('Registro restaurado');
+  }});
+}
+
+/* ---------------- ventas ---------------- */
+const PAY_METHODS=['Efectivo','Transferencia','Tarjeta','Otro'];
+
+function renderVentas(){
+  openSwipe=null;
+  const arr=Array.isArray(data.ventas)?data.ventas:(data.ventas=[]);
+  const list=arr.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(b.id).localeCompare(String(a.id)));
+  const nowKey=todayISO().slice(0,7);
+  const month=list.filter(v=>(v.date||'').slice(0,7)===nowKey);
+  const sum=month.reduce((s,v)=>{
+    const q=+v.qty||1;
+    s.n++; s.u+=q; s.income+=(+v.price||0); s.cost+=(+v.cost||0);
+    if(!v.paid) s.due+=(+v.price||0);
+    return s;
+  },{n:0,u:0,income:0,cost:0,due:0});
+  const profit=sum.income-sum.cost;
+
+  document.getElementById('vt_monthLabel').textContent='Este mes · '+monthTitle(nowKey);
+  document.getElementById('vt_stats').innerHTML=`
+    <div class="stat"><div class="n">${sum.n}</div><div class="k">ventas</div></div>
+    <div class="stat"><div class="n">${sum.u}</div><div class="k">unidades</div></div>
+    <div class="stat"><div class="n money accent">${money(sum.income)}</div><div class="k">ingresos</div></div>
+    <div class="stat"><div class="n money">${money(sum.cost)}</div><div class="k">costo</div></div>
+    <div class="stat"><div class="n money ${profit<0?'warn':''}">${money(profit)}</div><div class="k">ganancia</div></div>
+    <div class="stat"><div class="n money ${sum.due>0?'warn':''}">${money(sum.due)}</div><div class="k">por cobrar</div></div>`;
+
+  const el=document.getElementById('vt_list');
+  if(!list.length){el.innerHTML='<div class="empty">Aún no registras ventas.<br>Toca “Registrar venta”.</div>';return}
+  let html='',curMonth='';
+  list.forEach(v=>{
+    const mk=(v.date||'').slice(0,7);
+    if(mk && mk!==curMonth){curMonth=mk;html+=`<div class="section-label" style="margin:16px 16px 6px">${monthTitle(mk)}</div>`}
+    const meta=[fmtDay(v.date), v.client&&esc(v.client), v.method&&esc(v.method)].filter(Boolean).join(' · ');
+    const badge=v.paid?'<span class="badge paid">pagado</span>':'<span class="badge due">por cobrar</span>';
+    html+=`<div class="swipe-wrap">
+      <button class="swipe-del" onclick="delVenta('${v.id}')">Eliminar</button>
+      <div class="list-item swipe-face" onclick="tapVenta(event,'${v.id}')">
+        <div class="meta"><div class="t">${esc(v.name||'Venta')}${(+v.qty>1)?' ×'+(+v.qty):''}</div><div class="s">${meta}</div></div>
+        <div class="val"><b>${money(v.price)}</b><div class="s">${badge}</div></div>
+        <span class="chev">›</span>
+      </div>
+    </div>`;
+  });
+  el.innerHTML=html; bindSwipe(el);
+}
+function tapVenta(e, vid){
+  const face=e.currentTarget;
+  if(face._noClick) return;
+  if(openSwipe){ closeSwipe(); return; }
+  openVenta(vid);
+}
+
+function ventaRefOptions(sel){
+  let h=`<option value="" ${!sel?'selected':''}>Venta libre</option>`;
+  if(data.figures.length){
+    h+='<optgroup label="Figuras cotizadas">';
+    data.figures.slice().reverse().forEach(f=>{
+      const v='figura:'+f.id;
+      h+=`<option value="${v}" ${v===sel?'selected':''}>${esc(f.name||'Sin nombre')} — ${money(f.snapshot&&f.snapshot.sale||0)}</option>`;
+    });
+    h+='</optgroup>';
+  }
+  if(data.impresiones.length){
+    h+='<optgroup label="Impresiones del registro">';
+    data.impresiones.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(im=>{
+      const v='impresion:'+im.id;
+      h+=`<option value="${v}" ${v===sel?'selected':''}>${esc(im.name||'Sin nombre')} — ${fmtDay(im.date)}</option>`;
+    });
+    h+='</optgroup>';
+  }
+  return h;
+}
+function ventaApplyRef(){
+  const raw=document.getElementById('v_ref').value;
+  if(!raw){ updateVentaProfit(); return; }
+  const i=raw.indexOf(':'), t=raw.slice(0,i), rid=raw.slice(i+1);
+  let name='',qty=1,price=0,cost=0;
+  if(t==='figura'){
+    const f=data.figures.find(x=>x.id===rid);
+    if(f){ name=f.name||''; qty=+f.qty||1; price=+(f.snapshot&&f.snapshot.sale)||0; cost=+(f.snapshot&&f.snapshot.total)||0; }
+  }else if(t==='impresion'){
+    const im=data.impresiones.find(x=>x.id===rid);
+    if(im){ name=im.name||''; qty=+im.qty||1; cost=+im.cost||0; }
+  }
+  document.getElementById('v_name').value=name;
+  document.getElementById('v_qty').value=qty;
+  document.getElementById('v_price').value=price||'';
+  document.getElementById('v_cost').value=cost||0;
+  updateVentaProfit();
+}
+function updateVentaProfit(){
+  const pe=document.getElementById('v_profit'); if(!pe) return;
+  const price=+document.getElementById('v_price').value||0;
+  const cost=+document.getElementById('v_cost').value||0;
+  pe.textContent=money(price-cost);
+  pe.style.color = price>0 ? (price-cost>=0?'var(--accent)':'var(--danger)') : '';
+}
+
+function openVenta(vid){
+  const blank={id:null,date:todayISO(),refType:'',refId:'',name:'',client:'',qty:1,price:0,cost:0,method:'',paid:false,delivered:false,notes:''};
+  const v=vid?Object.assign({},blank,data.ventas.find(x=>x.id===vid)||{}):blank;
+  const refSel=v.refType?(v.refType+':'+v.refId):'';
+  const methodOpts='<option value="">— método —</option>'+PAY_METHODS.map(m=>`<option ${m===v.method?'selected':''}>${m}</option>`).join('');
+  openSheet('Venta', `
+    <div class="wrap">
+      <div class="section-label">Qué vendiste</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Origen</div><div class="right"><select id="v_ref" onchange="ventaApplyRef()">${ventaRefOptions(refSel)}</select></div></div>
+        <div class="row"><input class="wide" id="v_name" placeholder="Nombre (ej. Llavero personalizado)" value="${esc(v.name)}"></div>
+        <div class="row"><div class="lbl">Fecha</div><div class="right"><input type="date" id="v_date" value="${v.date}"></div></div>
+        <div class="row"><div class="lbl">Cliente</div><div class="right"><input id="v_client" placeholder="Nombre" value="${esc(v.client)}" style="width:150px"></div></div>
+        <div class="row"><div class="lbl">Cantidad</div><div class="right"><input class="num" id="v_qty" type="number" min="1" value="${+v.qty||1}" style="width:64px"></div></div>
+      </div>
+
+      <div class="section-label">Dinero</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Precio de venta <small>total</small></div><div class="right"><input class="num" id="v_price" type="number" min="0" value="${+v.price||0}" style="width:80px" oninput="updateVentaProfit()"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl">Costo <small>para tu margen</small></div><div class="right"><input class="num" id="v_cost" type="number" min="0" value="${+v.cost||0}" style="width:80px" oninput="updateVentaProfit()"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl muted">Ganancia</div><div class="right muted" id="v_profit">—</div></div>
+        <div class="row"><div class="lbl">Método de pago</div><div class="right"><select id="v_method">${methodOpts}</select></div></div>
+      </div>
+
+      <div class="section-label">Estado</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Pagado</div><div class="right toggle-row" style="width:150px" id="v_paid">
+          <button type="button" data-v="1" class="${v.paid?'on':''}" onclick="pickToggle('v_paid',1)">Sí</button>
+          <button type="button" data-v="0" class="${v.paid?'':'on'}" onclick="pickToggle('v_paid',0)">No</button>
+        </div></div>
+        <div class="row"><div class="lbl">Entregado</div><div class="right toggle-row" style="width:150px" id="v_deliv">
+          <button type="button" data-v="1" class="${v.delivered?'on':''}" onclick="pickToggle('v_deliv',1)">Sí</button>
+          <button type="button" data-v="0" class="${v.delivered?'':'on'}" onclick="pickToggle('v_deliv',0)">No</button>
+        </div></div>
+      </div>
+
+      <div class="section-label">Notas</div>
+      <div class="card"><div class="row"><input class="wide" id="v_notes" placeholder="Observaciones" value="${esc(v.notes)}"></div></div>
+
+      <div class="save-strip" style="display:flex;gap:10px">
+        <button class="btn block" onclick="saveVenta('${v.id||''}')">${vid?'Actualizar':'Guardar'}</button>
+        ${vid?`<button class="btn danger sm" onclick="delVenta('${vid}')">Eliminar</button>`:''}
+      </div>
+    </div>`);
+  updateVentaProfit();
+}
+
+function saveVenta(vid){
+  const raw=(document.getElementById('v_ref').value||'');
+  const i=raw.indexOf(':');
+  const obj={
+    id: vid||id(),
+    date: document.getElementById('v_date').value||todayISO(),
+    refType: i>-1?raw.slice(0,i):'',
+    refId: i>-1?raw.slice(i+1):'',
+    name: document.getElementById('v_name').value.trim()||'Venta',
+    client: document.getElementById('v_client').value.trim(),
+    qty: Math.max(1,Math.floor(+document.getElementById('v_qty').value||1)),
+    price: +document.getElementById('v_price').value||0,
+    cost: +document.getElementById('v_cost').value||0,
+    method: document.getElementById('v_method').value||'',
+    paid: !!document.querySelector('#v_paid button.on[data-v="1"]'),
+    delivered: !!document.querySelector('#v_deliv button.on[data-v="1"]'),
+    notes: document.getElementById('v_notes').value.trim()
+  };
+  if(vid){const k=data.ventas.findIndex(x=>x.id===vid); if(k>-1) data.ventas[k]=obj; else data.ventas.push(obj);}
+  else data.ventas.push(obj);
+  persist(); renderVentas(); closeSheet(); toast(vid?'Venta actualizada':'Venta registrada');
+}
+function delVenta(vid){
+  const idx=data.ventas.findIndex(x=>x.id===vid);
+  if(idx<0) return;
+  const removed=data.ventas[idx];
+  data.ventas.splice(idx,1);
+  openSwipe=null;
+  persist(); renderVentas(); closeSheet();
+  toast('Venta eliminada', { label:'Deshacer', fn:()=>{
+    data.ventas.splice(Math.min(idx,data.ventas.length),0,removed);
+    persist(); renderVentas(); toast('Venta restaurada');
   }});
 }
 
