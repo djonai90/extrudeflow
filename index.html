@@ -1366,7 +1366,7 @@ function toast(msg, action){
   t.onclick = action ? ()=>{ t.classList.remove('show'); t.onclick=null; action.fn(); } : null;
   t.classList.add('show');
   clearTimeout(toastT);
-  toastT=setTimeout(()=>{ t.classList.remove('show'); t.onclick=null; }, action ? 4500 : 1600);
+  toastT=setTimeout(()=>{ t.classList.remove('show'); t.onclick=null; }, action ? 6000 : 1600);
 }
 
 /* ---------------- PWA service worker ---------------- */
