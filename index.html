@@ -338,6 +338,31 @@
       </div>
     </div>
 
+    <div class="section-label">Configuración de impresión</div>
+    <div class="card">
+      <div class="row">
+        <div class="lbl">Boquilla</div>
+        <div class="right"><select id="c_nozzle">
+          <option>0.2</option><option>0.25</option><option selected>0.4</option>
+          <option>0.6</option><option>0.8</option><option>1.0</option>
+        </select><span class="unit">mm</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Altura de capa</div>
+        <div class="right"><input class="num" id="c_layerH" type="number" min="0" step="0.02" value="0.2" style="width:70px"><span class="unit">mm</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Relleno</div>
+        <div class="right"><input class="num" id="c_infill" type="number" min="0" max="100" value="15" style="width:64px"><span class="unit">%</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Soporte</div>
+        <div class="right"><select id="c_support">
+          <option>Sin soporte</option><option>Normal</option><option>Árbol</option><option>Solo en la base</option>
+        </select></div>
+      </div>
+    </div>
+
     <div class="section-label">Filamentos</div>
     <div class="card" id="c_filWrap"></div>
     <div style="padding:10px 0"><button class="btn ghost sm" onclick="addFilLine()">+ Agregar filamento</button></div>
@@ -947,7 +972,7 @@ function syncWheels(){
 
 function bindCalc(){
   initTimeWheels();
-  ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
+  ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_nozzle','c_layerH','c_infill','c_support','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
   calc();
@@ -1017,6 +1042,10 @@ function resetCalc(){
   document.getElementById('c_name').value='';
   document.getElementById('c_type').value='';
   document.getElementById('c_qty').value=1;
+  document.getElementById('c_nozzle').value='0.4';
+  document.getElementById('c_layerH').value=0.2;
+  document.getElementById('c_infill').value=15;
+  document.getElementById('c_support').value='Sin soporte';
   document.getElementById('c_h').value=1;document.getElementById('c_m').value=0;
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
   document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
@@ -1035,6 +1064,10 @@ function saveFigure(){
     name:document.getElementById('c_name').value||'Sin nombre',
     type:document.getElementById('c_type').value||'',
     qty:Math.max(1,Math.floor(+document.getElementById('c_qty').value||1)),
+    nozzle:document.getElementById('c_nozzle').value||'',
+    layerH:+document.getElementById('c_layerH').value||0,
+    infill:+document.getElementById('c_infill').value||0,
+    support:document.getElementById('c_support').value||'',
     timeH:+document.getElementById('c_h').value||0,
     timeM:+document.getElementById('c_m').value||0,
     printerId:document.getElementById('c_printer').value,
@@ -1060,6 +1093,10 @@ function loadFigure(fid){
   document.getElementById('c_name').value=f.name;
   document.getElementById('c_type').value=f.type||'';
   document.getElementById('c_qty').value=Math.max(1,Math.floor(+f.qty||1));
+  document.getElementById('c_nozzle').value=f.nozzle||'0.4';
+  document.getElementById('c_layerH').value=f.layerH||0.2;
+  document.getElementById('c_infill').value=(f.infill!=null?f.infill:15);
+  document.getElementById('c_support').value=f.support||'Sin soporte';
   document.getElementById('c_h').value=f.timeH;
   document.getElementById('c_m').value=f.timeM;
   document.getElementById('c_merma').value=f.merma;
@@ -1321,6 +1358,10 @@ function delFilament(fid){
 
 /* ---------------- registro de impresiones ---------------- */
 const IMP_STATUS={ ok:'Exitosa', fail:'Fallida', reprint:'Reimpresión' };
+/* configuración de impresión (compartida entre cotizador y registro) */
+const NOZZLE_OPTS=['0.2','0.25','0.4','0.6','0.8','1.0'];
+const SUPPORT_OPTS=['Sin soporte','Normal','Árbol','Solo en la base'];
+function optHTML(list,sel){ return list.map(v=>`<option${String(v)===String(sel)?' selected':''}>${v}</option>`).join(''); }
 const MES_CORTO=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MES_LARGO=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
@@ -1359,7 +1400,8 @@ function renderRegistro(){
     const mk=(im.date||'').slice(0,7);
     if(mk && mk!==curMonth){curMonth=mk;html+=`<div class="section-label" style="margin:16px 16px 6px">${monthTitle(mk)}</div>`}
     const g=impGrams(im),h=impHours(im);
-    const meta=[fmtDay(im.date), im.client&&esc(im.client), g&&(Math.round(g)+' g'), h&&((Math.round(h*10)/10)+' h')].filter(Boolean).join(' · ');
+    const cfg=[im.layerH&&(im.layerH+' mm'), im.infill&&(im.infill+'%')].filter(Boolean).join('/');
+    const meta=[fmtDay(im.date), im.client&&esc(im.client), g&&(Math.round(g)+' g'), h&&((Math.round(h*10)/10)+' h'), cfg].filter(Boolean).join(' · ');
     const badge=(+im.price>0)?(im.paid?'<span class="badge paid">pagado</span>':'<span class="badge due">por cobrar</span>'):'';
     html+=`<div class="list-item" onclick="openImpresion('${im.id}')">
       <span class="sdot ${im.status||'ok'}"></span>
@@ -1389,7 +1431,7 @@ function pickToggle(groupId,v){
 }
 
 function openImpresion(iid){
-  const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,status:'ok',cost:0,price:0,paid:false,delivered:false,notes:''};
+  const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,status:'ok',nozzle:'0.4',layerH:0.2,infill:15,support:'Sin soporte',cost:0,price:0,paid:false,delivered:false,notes:''};
   const im=iid?Object.assign({},blank,data.impresiones.find(x=>x.id===iid)||{}):blank;
   const printerOpts='<option value="">— ninguna —</option>'+data.printers.map(p=>`<option value="${p.id}" ${p.id===im.printerId?'selected':''}>${esc(p.name)}</option>`).join('');
   const stOpt=k=>`<option value="${k}" ${im.status===k?'selected':''}>${IMP_STATUS[k]}</option>`;
@@ -1413,6 +1455,14 @@ function openImpresion(iid){
       </div>
       <div class="card" id="im_filWrap" style="margin-top:8px"></div>
       <div style="padding:8px 0"><button class="btn ghost sm" onclick="addImpFilLine()">+ Agregar filamento</button></div>
+
+      <div class="section-label">Configuración de impresión</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Boquilla</div><div class="right"><select id="im_nozzle">${optHTML(NOZZLE_OPTS, im.nozzle||'0.4')}</select><span class="unit">mm</span></div></div>
+        <div class="row"><div class="lbl">Altura de capa</div><div class="right"><input class="num" id="im_layerH" type="number" min="0" step="0.02" value="${im.layerH!=null?im.layerH:0.2}" style="width:70px"><span class="unit">mm</span></div></div>
+        <div class="row"><div class="lbl">Relleno</div><div class="right"><input class="num" id="im_infill" type="number" min="0" max="100" value="${im.infill!=null?im.infill:15}" style="width:64px"><span class="unit">%</span></div></div>
+        <div class="row"><div class="lbl">Soporte</div><div class="right"><select id="im_support">${optHTML(SUPPORT_OPTS, im.support||'Sin soporte')}</select></div></div>
+      </div>
 
       <div class="section-label">Resultado</div>
       <div class="card">
@@ -1459,6 +1509,10 @@ function saveImpresion(iid){
     fils,
     timeH: +document.getElementById('im_h').value||0,
     timeM: +document.getElementById('im_m').value||0,
+    nozzle: document.getElementById('im_nozzle').value||'',
+    layerH: +document.getElementById('im_layerH').value||0,
+    infill: +document.getElementById('im_infill').value||0,
+    support: document.getElementById('im_support').value||'',
     status: document.getElementById('im_status').value,
     cost: +document.getElementById('im_cost').value||0,
     price: +document.getElementById('im_price').value||0,
