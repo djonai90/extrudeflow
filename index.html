@@ -299,6 +299,10 @@
         <input class="wide" id="c_name" placeholder="Nombre de la figura (ej. Llavero)">
       </div>
       <div class="row">
+        <div class="lbl">Cantidad de piezas <small>tiempo y gramos son por pieza</small></div>
+        <div class="right"><input class="num" id="c_qty" type="number" min="1" value="1" style="width:64px"><span class="unit">pz</span></div>
+      </div>
+      <div class="row">
         <div class="lbl">Tiempo de impresión</div>
         <div class="right wheelset">
           <input type="hidden" id="c_h" value="1">
@@ -328,11 +332,11 @@
         <div class="right"><input class="num" id="c_margin" type="number" min="0" value="60" style="width:64px"><span class="unit">%</span></div>
       </div>
       <div class="row">
-        <div class="lbl">Mano de obra <small>opcional</small></div>
-        <div class="right"><input class="num" id="c_labor" type="number" min="0" value="0" style="width:64px"><span class="unit" id="curLabor">$</span></div>
+        <div class="lbl">Trabajo manual <small>soportes, lijado, pintura, ensamble — por pieza</small></div>
+        <div class="right"><input class="num" id="c_labor" type="number" min="0" value="0" style="width:64px"><span class="unit">min</span></div>
       </div>
       <div class="row">
-        <div class="lbl">Costos extra <small>empaque, envío…</small></div>
+        <div class="lbl">Costos extra <small>empaque, envío — una vez</small></div>
         <div class="right"><input class="num" id="c_extra" type="number" min="0" value="0" style="width:64px"><span class="unit" id="curExtra">$</span></div>
       </div>
     </div>
@@ -412,11 +416,15 @@
         <div class="right"><input class="num" id="s_kwh" type="number" min="0" step="0.01" style="width:80px"><span class="unit" id="curKwh">$</span></div>
       </div>
       <div class="row">
-        <div class="lbl">Costo por hora de máquina <small>desgaste + tu tiempo</small></div>
-        <div class="right"><input class="num" id="s_hour" type="number" min="0" step="0.5" style="width:80px"><span class="unit" id="curHour">$</span></div>
+        <div class="lbl">Costo de máquina por hora <small>desgaste, mantenimiento, boquillas</small></div>
+        <div class="right"><input class="num" id="s_machineHour" type="number" min="0" step="0.5" style="width:80px"><span class="unit" id="curMachineHour">$</span></div>
+      </div>
+      <div class="row">
+        <div class="lbl">Costo de tu tiempo por hora <small>tarifa del trabajo manual</small></div>
+        <div class="right"><input class="num" id="s_laborHour" type="number" min="0" step="0.5" style="width:80px"><span class="unit" id="curLaborHour">$</span></div>
       </div>
     </div>
-    <p class="hint">El costo por hora es una tarifa por cada hora que ocupa la máquina. Se multiplica por las horas de la figura y hace que el tiempo pese directo en el precio.</p>
+    <p class="hint">Máquina/hora se multiplica por las horas de impresión (× cantidad). Tu tiempo/hora se multiplica por los minutos de "Trabajo manual" (× cantidad).</p>
 
     <div class="section-label">Tu negocio</div>
     <div class="card">
@@ -566,7 +574,7 @@ function money(n){return cur()+' '+(Math.round(n*100)/100).toLocaleString('es-MX
 function gramCost(f){return f.spoolWeight>0? f.spoolPrice/f.spoolWeight : 0}
 
 /* ---------------- boot / auth ---------------- */
-const DEFAULT_SETTINGS = { cur:'$', kwh:2.8, hour:0, biz:'', iva:0, round:0 };
+const DEFAULT_SETTINGS = { cur:'$', kwh:2.8, machineHour:0, laborHour:0, biz:'', iva:0, round:0 };
 
 (async function boot(){
   try{
@@ -599,6 +607,21 @@ async function doLogin(ev){
   }
 }
 
+// normalize shape so old/partial blobs can't break the calculator
+function normalizeData(){
+  data.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings||{});
+  if(data.settings.hour!==undefined && !data.settings.machineHour && !data.settings.laborHour){
+    data.settings.machineHour = +data.settings.hour||0;   // old combined rate → machine
+  }
+  delete data.settings.hour;
+  data.settings.machineHour = +data.settings.machineHour||0;
+  data.settings.laborHour = +data.settings.laborHour||0;
+  data.printers = Array.isArray(data.printers)?data.printers:[];
+  data.filaments = Array.isArray(data.filaments)?data.filaments:[];
+  data.figures = Array.isArray(data.figures)?data.figures:[];
+  data.impresiones = Array.isArray(data.impresiones)?data.impresiones:[];
+}
+
 async function startApp(){
   let serverData=null;
   try{ const r=await api('/data'); serverData=r.data; }catch(e){}
@@ -619,12 +642,7 @@ async function startApp(){
     }
   }
 
-  // normalize shape so old/partial blobs can't break the calculator
-  data.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings||{});
-  data.printers = Array.isArray(data.printers)?data.printers:[];
-  data.filaments = Array.isArray(data.filaments)?data.filaments:[];
-  data.figures = Array.isArray(data.figures)?data.figures:[];
-  data.impresiones = Array.isArray(data.impresiones)?data.impresiones:[];
+  normalizeData();
 
   const who=document.getElementById('whoami'); if(who) who.textContent=currentUser.username;
   const adminLink=document.getElementById('adminLink');
@@ -660,7 +678,7 @@ function persist(){
 
 function refreshCurrencyLabels(){
   const c=cur();
-  ['curLabor','curExtra','curKwh','curHour'].forEach(idn=>{const e=document.getElementById(idn);if(e)e.textContent=c});
+  ['curExtra','curKwh','curMachineHour','curLaborHour'].forEach(idn=>{const e=document.getElementById(idn);if(e)e.textContent=c});
 }
 
 /* ---------------- navigation ---------------- */
@@ -710,7 +728,7 @@ function renderFigures(){
     <div class="swipe-wrap">
       <button class="swipe-del" onclick="delFigure('${f.id}')">Eliminar</button>
       <div class="list-item swipe-face" onclick="tapFigure(event,'${f.id}')">
-        <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo</div></div>
+        <div class="meta"><div class="t">${esc(f.name||'Sin nombre')}${(+f.qty>1)?' ×'+(+f.qty):''}</div><div class="s">${f.timeH}h ${f.timeM}m · ${money(f.snapshot.total)} costo${(f.snapshot.perPiece!=null)?' · '+money(f.snapshot.perPiece)+'/pz':''}</div></div>
         <div class="val"><b>${money(f.snapshot.sale)}</b><div class="s">venta</div></div>
         <span class="chev">›</span>
       </div>
@@ -794,16 +812,18 @@ function renderSettings(){
   const s=data.settings;
   document.getElementById('s_cur').value=s.cur;
   document.getElementById('s_kwh').value=s.kwh;
-  document.getElementById('s_hour').value=s.hour;
+  document.getElementById('s_machineHour').value=s.machineHour;
+  document.getElementById('s_laborHour').value=s.laborHour;
   document.getElementById('s_biz').value=s.biz;
   document.getElementById('s_iva').value=s.iva;
   document.getElementById('s_round').value=s.round;
-  ['s_cur','s_kwh','s_hour','s_biz','s_iva','s_round'].forEach(idn=>{
+  ['s_cur','s_kwh','s_machineHour','s_laborHour','s_biz','s_iva','s_round'].forEach(idn=>{
     const e=document.getElementById(idn);
     e.oninput=e.onchange=()=>{
       s.cur=document.getElementById('s_cur').value||'$';
       s.kwh=+document.getElementById('s_kwh').value||0;
-      s.hour=+document.getElementById('s_hour').value||0;
+      s.machineHour=+document.getElementById('s_machineHour').value||0;
+      s.laborHour=+document.getElementById('s_laborHour').value||0;
       s.biz=document.getElementById('s_biz').value;
       s.iva=+document.getElementById('s_iva').value||0;
       s.round=+document.getElementById('s_round').value||0;
@@ -906,7 +926,7 @@ function syncWheels(){
 
 function bindCalc(){
   initTimeWheels();
-  ['c_name','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
+  ['c_name','c_qty','c_h','c_m','c_printer','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
   calc();
@@ -914,25 +934,29 @@ function bindCalc(){
 
 function computeCost(){
   const s=data.settings;
+  const qty=Math.max(1,Math.floor(+document.getElementById('c_qty').value||1));
   const h=+document.getElementById('c_h').value||0;
   const m=+document.getElementById('c_m').value||0;
   const hours=h+m/60;
-  // material
-  let material=0;
+  // material (per piece)
+  let unitMaterial=0;
   document.querySelectorAll('#c_filWrap .fil-line').forEach(line=>{
     const f=data.filaments.find(x=>x.id===line.querySelector('.fsel').value);
     const g=+line.querySelector('.fg').value||0;
-    if(f) material+=gramCost(f)*g;
+    if(f) unitMaterial+=gramCost(f)*g;
   });
+  const material=unitMaterial*qty;
   const mermaPct=+document.getElementById('c_merma').value||0;
   const merma=material*mermaPct/100;
-  // electricity
+  // electricity (per piece × qty)
   const p=data.printers.find(x=>x.id===document.getElementById('c_printer').value);
   const watts=p?p.watts:0;
-  const elec=(watts/1000)*hours*(s.kwh||0);
-  // machine hour
-  const machine=(s.hour||0)*hours;
-  const labor=+document.getElementById('c_labor').value||0;
+  const elec=(watts/1000)*hours*qty*(s.kwh||0);
+  // machine wear + your hands-on time, both scale with qty
+  const machine=(s.machineHour||0)*hours*qty;
+  const laborMin=+document.getElementById('c_labor').value||0;
+  const labor=(s.laborHour||0)*(laborMin/60)*qty;
+  // one-time costs (not multiplied)
   const extra=+document.getElementById('c_extra').value||0;
   const total=material+merma+elec+machine+labor+extra;
   const marginPct=+document.getElementById('c_margin').value||0;
@@ -942,7 +966,8 @@ function computeCost(){
   sale+=iva;
   // round
   if(s.round>0){ sale=Math.ceil(sale/s.round)*s.round; }
-  return {hours,material,merma,elec,machine,labor,extra,total,margin,marginPct,iva,sale};
+  const perPiece = qty>1 ? sale/qty : null;
+  return {qty,hours,material,merma,elec,machine,labor,extra,total,margin,marginPct,iva,sale,perPiece};
 }
 
 function calc(){
@@ -953,14 +978,15 @@ function calc(){
     ['Merma',r.merma],
     ['Electricidad',r.elec],
   ];
-  if(r.machine>0) rows.push(['Hora de máquina',r.machine]);
-  if(r.labor>0) rows.push(['Mano de obra',r.labor]);
+  if(r.machine>0) rows.push(['Máquina',r.machine]);
+  if(r.labor>0) rows.push(['Trabajo manual',r.labor]);
   if(r.extra>0) rows.push(['Costos extra',r.extra]);
   let html=rows.map(([l,v])=>`<div class="row"><div class="lbl">${l}</div><div class="amount">${money(v)}</div></div>`).join('');
-  html+=`<div class="row total"><div class="lbl">Costo total</div><div class="amount">${money(r.total)}</div></div>`;
+  html+=`<div class="row total"><div class="lbl">Costo total${r.qty>1?' · '+r.qty+' pz':''}</div><div class="amount">${money(r.total)}</div></div>`;
   html+=`<div class="row"><div class="lbl muted">Margen (${r.marginPct}%)</div><div class="amount muted">${money(r.margin)}</div></div>`;
   if(r.iva>0) html+=`<div class="row"><div class="lbl muted">IVA (${s.iva}%)</div><div class="amount muted">${money(r.iva)}</div></div>`;
   html+=`<div class="row sale"><div class="lbl">Precio de venta</div><div class="amount">${money(r.sale)}</div></div>`;
+  if(r.perPiece!=null) html+=`<div class="row"><div class="lbl muted">Precio por pieza</div><div class="amount muted">${money(r.perPiece)}</div></div>`;
   document.getElementById('c_result').innerHTML=html;
   document.getElementById('saveBtn').textContent = editingFigureId?'Actualizar figura':'Guardar figura';
 }
@@ -968,6 +994,7 @@ function calc(){
 function resetCalc(){
   editingFigureId=null;
   document.getElementById('c_name').value='';
+  document.getElementById('c_qty').value=1;
   document.getElementById('c_h').value=1;document.getElementById('c_m').value=0;
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
   document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
@@ -984,6 +1011,7 @@ function saveFigure(){
   const fig={
     id:editingFigureId||id(),
     name:document.getElementById('c_name').value||'Sin nombre',
+    qty:Math.max(1,Math.floor(+document.getElementById('c_qty').value||1)),
     timeH:+document.getElementById('c_h').value||0,
     timeM:+document.getElementById('c_m').value||0,
     printerId:document.getElementById('c_printer').value,
@@ -992,7 +1020,7 @@ function saveFigure(){
     labor:+document.getElementById('c_labor').value||0,
     extra:+document.getElementById('c_extra').value||0,
     fils,
-    snapshot:{total:r.total,sale:r.sale}
+    snapshot:{total:r.total,sale:r.sale,perPiece:r.perPiece}
   };
   if(editingFigureId){
     const i=data.figures.findIndex(f=>f.id===editingFigureId);
@@ -1007,6 +1035,7 @@ function loadFigure(fid){
   const f=data.figures.find(x=>x.id===fid); if(!f) return;
   editingFigureId=fid;
   document.getElementById('c_name').value=f.name;
+  document.getElementById('c_qty').value=Math.max(1,Math.floor(+f.qty||1));
   document.getElementById('c_h').value=f.timeH;
   document.getElementById('c_m').value=f.timeM;
   document.getElementById('c_merma').value=f.merma;
@@ -1440,7 +1469,7 @@ function exportData(){
 function importData(ev){
   const file=ev.target.files[0];if(!file)return;
   const rd=new FileReader();
-  rd.onload=()=>{try{data=JSON.parse(rd.result);persist();refreshCurrencyLabels();renderAll();bindCalc();toast('Respaldo importado');}catch(e){toast('Archivo inválido')}};
+  rd.onload=()=>{try{data=JSON.parse(rd.result);normalizeData();persist();refreshCurrencyLabels();renderAll();bindCalc();toast('Respaldo importado');}catch(e){toast('Archivo inválido')}};
   rd.readAsText(file);ev.target.value='';
 }
 
