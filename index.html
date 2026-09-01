@@ -844,7 +844,7 @@ function refreshFilOptions(line){
 }
 
 /* ---------------- time wheels (carousel picker) ---------------- */
-let wheelsReady=false, wheelSyncing=false;
+let wheelsReady=false;
 
 function buildWheel(el, max){
   let html='<div class="pad"></div>';
@@ -865,40 +865,43 @@ function wheelCenterOpt(el){
   return best;
 }
 function markSel(el,o){ el.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)); }
-function settleWheel(el){
-  const o=wheelCenterOpt(el); if(!o) return;
-  markSel(el,o);
-  const top=o.offsetTop-(el.clientHeight-o.offsetHeight)/2;
-  if(Math.abs(el.scrollTop-top)>1) el.scrollTo({top,behavior:'smooth'});
-  if(wheelSyncing) return;
+function commitWheel(el,o){
   const inp=document.getElementById(el.dataset.target);
   if(inp && inp.value!==o.dataset.v){
     inp.value=o.dataset.v;
     inp.dispatchEvent(new Event('input',{bubbles:true}));
   }
 }
+function settleWheel(el){
+  const o=wheelCenterOpt(el); if(!o) return;
+  markSel(el,o);
+  const top=o.offsetTop-(el.clientHeight-o.offsetHeight)/2;
+  if(Math.abs(el.scrollTop-top)>1) el.scrollTo({top,behavior:'smooth'});
+  commitWheel(el,o);
+}
 function scrollWheelTo(el, v, smooth){
   const o=el.querySelector('.opt[data-v="'+v+'"]'); if(!o) return;
   markSel(el,o);
   el.scrollTo({ top:o.offsetTop-(el.clientHeight-o.offsetHeight)/2, behavior: smooth?'smooth':'auto' });
+  if(!smooth) commitWheel(el,o);
 }
 function initTimeWheels(){
   if(wheelsReady) return;
   const h=document.getElementById('wheel_h'), m=document.getElementById('wheel_m');
   if(!h||!m) return;
-  buildWheel(h,99); buildWheel(m,59);
+  buildWheel(h,120); buildWheel(m,59);
   wheelsReady=true;
   syncWheels();
 }
 function syncWheels(){
   const h=document.getElementById('wheel_h'), m=document.getElementById('wheel_m');
   if(!h||!m) return;
-  wheelSyncing=true;
-  requestAnimationFrame(()=>{
-    scrollWheelTo(h, Math.max(0,Math.min(99, parseInt(document.getElementById('c_h').value,10)||0)), false);
+  const go=()=>{
+    scrollWheelTo(h, Math.max(0,Math.min(120, parseInt(document.getElementById('c_h').value,10)||0)), false);
     scrollWheelTo(m, Math.max(0,Math.min(59, parseInt(document.getElementById('c_m').value,10)||0)), false);
-    setTimeout(()=>{ wheelSyncing=false; }, 260);
-  });
+  };
+  go();
+  requestAnimationFrame(go);
 }
 
 function bindCalc(){
