@@ -194,6 +194,38 @@
   .sync.ok{color:var(--accent)}
   .sync.bad{color:var(--danger)}
   body:not(.authed) nav{display:none}
+
+  /* registro de impresiones */
+  nav button{font-size:10px}
+  nav button svg{width:21px;height:21px}
+  input[type=date]{
+    font-family:inherit;font-size:15.5px;color:var(--ink);color-scheme:dark;
+    background:#000;border:1px solid var(--line);border-radius:9px;padding:8px 11px;outline:none;
+  }
+  input[type=date]:focus{border-color:var(--accent-deep)}
+  .statgrid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  }
+  .stat{background:var(--panel);padding:12px 8px;text-align:center}
+  .stat .n{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2}
+  .stat .n.money{font-size:13.5px}
+  .stat .n.accent{color:var(--accent)}
+  .stat .n.warn{color:var(--warn)}
+  .stat .k{font-size:11px;color:var(--ink-faint);margin-top:3px}
+  .sdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  .sdot.ok{background:var(--accent)}
+  .sdot.fail{background:var(--danger)}
+  .sdot.reprint{background:var(--warn)}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .badge.paid{color:var(--accent);background:rgba(74,222,128,.12)}
+  .badge.due{color:var(--warn);background:rgba(251,191,36,.12)}
+  .toggle-row{display:flex;gap:8px}
+  .toggle-row button{
+    flex:1;background:transparent;border:1px solid var(--line);color:var(--ink-soft);
+    border-radius:9px;padding:9px 0;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
+  }
+  .toggle-row button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -280,6 +312,18 @@
     <div class="section-label">Figuras guardadas</div>
     <div class="card" id="figList"></div>
     <p class="hint">Toca una figura para volver a abrirla en la calculadora.</p>
+  </div>
+</section>
+
+<!-- ============ REGISTRO DE IMPRESIONES ============ -->
+<section class="view" id="v-registro">
+  <div class="wrap">
+    <div class="section-label" id="reg_monthLabel">Este mes</div>
+    <div class="statgrid" id="reg_stats"></div>
+    <div style="padding:12px 0"><button class="btn block" onclick="openImpresion()">+ Registrar impresión</button></div>
+    <div class="section-label">Historial</div>
+    <div class="card" id="reg_list"></div>
+    <p class="hint">Anota cada impresión real: material, tiempo, resultado y cobro. El resumen de arriba es del mes en curso.</p>
   </div>
 </section>
 
@@ -385,6 +429,10 @@
     <svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
     Figuras
   </button>
+  <button data-view="registro" onclick="go('registro')">
+    <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M8.5 12.5l2.2 2.2 4.3-4.4"/></svg>
+    Registro
+  </button>
   <button data-view="printers" onclick="go('printers')">
     <svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1"/><path d="M8 17h8v4H8z"/></svg>
     Impresoras
@@ -466,7 +514,8 @@ let data = {
   settings:{ cur:'$', kwh:2.8, hour:0, biz:'', iva:0, round:0 },
   printers:[ {id:id(), name:'Mi impresora', watts:120} ],
   filaments:[ {id:id(), name:'PLA básico', brand:'Genérico', type:'PLA', color:'#22c55e', spoolPrice:350, spoolWeight:1000} ],
-  figures:[]
+  figures:[],
+  impresiones:[]
 };
 let editingFigureId=null;
 
@@ -534,6 +583,7 @@ async function startApp(){
   data.printers = Array.isArray(data.printers)?data.printers:[];
   data.filaments = Array.isArray(data.filaments)?data.filaments:[];
   data.figures = Array.isArray(data.figures)?data.figures:[];
+  data.impresiones = Array.isArray(data.impresiones)?data.impresiones:[];
 
   const who=document.getElementById('whoami'); if(who) who.textContent=currentUser.username;
   const adminLink=document.getElementById('adminLink');
@@ -577,14 +627,14 @@ function go(v){
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  const subs={calc:'Cotiza una figura',figs:'Tus figuras',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
+  const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
   document.getElementById('hdrSub').textContent=subs[v]||'';
   window.scrollTo(0,0);
 }
 
 /* ---------------- render lists ---------------- */
 function renderAll(){
-  renderPrinters(); renderFilaments(); renderFigures(); renderSettings(); renderCalcSelectors();
+  renderPrinters(); renderFilaments(); renderFigures(); renderRegistro(); renderSettings(); renderCalcSelectors();
 }
 
 function renderPrinters(){
@@ -1032,6 +1082,163 @@ function saveFilament(fid){
 function delFilament(fid){
   data.filaments=data.filaments.filter(x=>x.id!==fid);
   persist();renderFilaments();renderCalcSelectors();calc();closeSheet();toast('Filamento eliminado');
+}
+
+/* ---------------- registro de impresiones ---------------- */
+const IMP_STATUS={ ok:'Exitosa', fail:'Fallida', reprint:'Reimpresión' };
+const MES_CORTO=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const MES_LARGO=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+function todayISO(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function impGrams(im){return (im.fils||[]).reduce((s,x)=>s+(+x.grams||0),0)}
+function impHours(im){return (+im.timeH||0)+(+im.timeM||0)/60}
+function fmtDay(iso){if(!iso)return '';const p=iso.split('-');return (+p[2])+' '+(MES_CORTO[(+p[1])-1]||'')}
+function monthTitle(key){const p=key.split('-');const m=MES_LARGO[(+p[1])-1]||'';return m.charAt(0).toUpperCase()+m.slice(1)+' '+p[0]}
+
+function renderRegistro(){
+  const imps=Array.isArray(data.impresiones)?data.impresiones:(data.impresiones=[]);
+  const list=imps.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(b.id).localeCompare(String(a.id)));
+  const nowKey=todayISO().slice(0,7);
+  const month=list.filter(im=>(im.date||'').slice(0,7)===nowKey);
+  const sum=month.reduce((s,im)=>{
+    const q=+im.qty||1;
+    s.n++; s.g+=impGrams(im)*q; s.h+=impHours(im);
+    s.income+=(+im.price||0); if(!im.paid) s.due+=(+im.price||0);
+    if(im.status==='fail') s.fail++;
+    return s;
+  },{n:0,g:0,h:0,income:0,due:0,fail:0});
+
+  document.getElementById('reg_monthLabel').textContent='Este mes · '+monthTitle(nowKey);
+  document.getElementById('reg_stats').innerHTML=`
+    <div class="stat"><div class="n">${sum.n}</div><div class="k">impresiones</div></div>
+    <div class="stat"><div class="n">${Math.round(sum.g)}</div><div class="k">gramos</div></div>
+    <div class="stat"><div class="n">${sum.h.toFixed(1)}</div><div class="k">horas</div></div>
+    <div class="stat"><div class="n money accent">${money(sum.income)}</div><div class="k">ingresos</div></div>
+    <div class="stat"><div class="n money ${sum.due>0?'warn':''}">${money(sum.due)}</div><div class="k">por cobrar</div></div>
+    <div class="stat"><div class="n">${sum.fail}</div><div class="k">fallidas</div></div>`;
+
+  const el=document.getElementById('reg_list');
+  if(!list.length){el.innerHTML='<div class="empty">Aún no registras impresiones.<br>Toca “Registrar impresión”.</div>';return}
+  let html='',curMonth='';
+  list.forEach(im=>{
+    const mk=(im.date||'').slice(0,7);
+    if(mk && mk!==curMonth){curMonth=mk;html+=`<div class="section-label" style="margin:16px 16px 6px">${monthTitle(mk)}</div>`}
+    const g=impGrams(im),h=impHours(im);
+    const meta=[fmtDay(im.date), im.client&&esc(im.client), g&&(Math.round(g)+' g'), h&&((Math.round(h*10)/10)+' h')].filter(Boolean).join(' · ');
+    const badge=(+im.price>0)?(im.paid?'<span class="badge paid">pagado</span>':'<span class="badge due">por cobrar</span>'):'';
+    html+=`<div class="list-item" onclick="openImpresion('${im.id}')">
+      <span class="sdot ${im.status||'ok'}"></span>
+      <div class="meta"><div class="t">${esc(im.name||'Sin nombre')}${(+im.qty>1)?' ×'+(+im.qty):''}</div><div class="s">${meta}</div></div>
+      <div class="val">${(+im.price>0)?`<b>${money(im.price)}</b>`:''}<div class="s">${badge}</div></div>
+      <span class="chev">›</span>
+    </div>`;
+  });
+  el.innerHTML=html;
+}
+
+function impFilOptions(sel){
+  return '<option value="">— filamento —</option>'+data.filaments.map(f=>`<option value="${f.id}" ${f.id===sel?'selected':''}>${esc(f.name)}</option>`).join('');
+}
+function addImpFilLine(filId,grams){
+  const wrap=document.getElementById('im_filWrap');
+  const div=document.createElement('div');
+  div.className='fil-line';
+  div.innerHTML=`<select class="ifsel">${impFilOptions(filId||'')}</select>
+    <input type="number" class="ifg" min="0" placeholder="g" value="${grams!=null?grams:''}">
+    <span class="unit">g</span>
+    <span class="x" onclick="this.parentNode.remove()">×</span>`;
+  wrap.appendChild(div);
+}
+function pickToggle(groupId,v){
+  document.querySelectorAll('#'+groupId+' button').forEach(b=>b.classList.toggle('on',+b.dataset.v===v));
+}
+
+function openImpresion(iid){
+  const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,status:'ok',cost:0,price:0,paid:false,delivered:false,notes:''};
+  const im=iid?Object.assign({},blank,data.impresiones.find(x=>x.id===iid)||{}):blank;
+  const printerOpts='<option value="">— ninguna —</option>'+data.printers.map(p=>`<option value="${p.id}" ${p.id===im.printerId?'selected':''}>${esc(p.name)}</option>`).join('');
+  const stOpt=k=>`<option value="${k}" ${im.status===k?'selected':''}>${IMP_STATUS[k]}</option>`;
+  openSheet('Impresión', `
+    <div class="wrap">
+      <div class="section-label">Qué se imprimió</div>
+      <div class="card">
+        <div class="row"><input class="wide" id="im_name" placeholder="Nombre (ej. Llavero personalizado)" value="${esc(im.name)}"></div>
+        <div class="row"><div class="lbl">Fecha</div><div class="right"><input type="date" id="im_date" value="${im.date}"></div></div>
+        <div class="row"><div class="lbl">Cantidad de piezas</div><div class="right"><input class="num" id="im_qty" type="number" min="1" value="${+im.qty||1}" style="width:64px"></div></div>
+        <div class="row"><div class="lbl">Cliente <small>opcional</small></div><div class="right"><input id="im_client" placeholder="Nombre" value="${esc(im.client)}" style="width:150px"></div></div>
+      </div>
+
+      <div class="section-label">Máquina y material</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Impresora</div><div class="right"><select id="im_printer">${printerOpts}</select></div></div>
+        <div class="row"><div class="lbl">Tiempo real</div><div class="right">
+          <input class="num" id="im_h" type="number" min="0" value="${+im.timeH||0}" style="width:56px"><span class="unit">h</span>
+          <input class="num" id="im_m" type="number" min="0" max="59" value="${+im.timeM||0}" style="width:56px"><span class="unit">min</span>
+        </div></div>
+      </div>
+      <div class="card" id="im_filWrap" style="margin-top:8px"></div>
+      <div style="padding:8px 0"><button class="btn ghost sm" onclick="addImpFilLine()">+ Agregar filamento</button></div>
+
+      <div class="section-label">Resultado</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Estado</div><div class="right"><select id="im_status">${stOpt('ok')}${stOpt('fail')}${stOpt('reprint')}</select></div></div>
+      </div>
+
+      <div class="section-label">Dinero</div>
+      <div class="card">
+        <div class="row"><div class="lbl">Costo estimado <small>material, luz, etc.</small></div><div class="right"><input class="num" id="im_cost" type="number" min="0" value="${+im.cost||0}" style="width:80px"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl">Precio cobrado</div><div class="right"><input class="num" id="im_price" type="number" min="0" value="${+im.price||0}" style="width:80px"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl">Pagado</div><div class="right toggle-row" style="width:150px" id="im_paid">
+          <button type="button" data-v="1" class="${im.paid?'on':''}" onclick="pickToggle('im_paid',1)">Sí</button>
+          <button type="button" data-v="0" class="${im.paid?'':'on'}" onclick="pickToggle('im_paid',0)">No</button>
+        </div></div>
+        <div class="row"><div class="lbl">Entregado</div><div class="right toggle-row" style="width:150px" id="im_deliv">
+          <button type="button" data-v="1" class="${im.delivered?'on':''}" onclick="pickToggle('im_deliv',1)">Sí</button>
+          <button type="button" data-v="0" class="${im.delivered?'':'on'}" onclick="pickToggle('im_deliv',0)">No</button>
+        </div></div>
+      </div>
+
+      <div class="section-label">Notas</div>
+      <div class="card"><div class="row"><input class="wide" id="im_notes" placeholder="Observaciones, ajustes, problemas…" value="${esc(im.notes)}"></div></div>
+
+      <div class="save-strip" style="display:flex;gap:10px">
+        <button class="btn block" onclick="saveImpresion('${im.id||''}')">${iid?'Actualizar':'Guardar'}</button>
+        ${iid?`<button class="btn danger sm" onclick="delImpresion('${iid}')">Eliminar</button>`:''}
+      </div>
+    </div>`);
+  const rows=(im.fils&&im.fils.length)?im.fils:[null];
+  rows.forEach(x=> x ? addImpFilLine(x.filId,x.grams) : addImpFilLine());
+}
+
+function saveImpresion(iid){
+  const fils=[...document.querySelectorAll('#im_filWrap .fil-line')].map(l=>({
+    filId:l.querySelector('.ifsel').value, grams:+l.querySelector('.ifg').value||0
+  })).filter(x=>x.filId||x.grams);
+  const obj={
+    id: iid||id(),
+    date: document.getElementById('im_date').value||todayISO(),
+    name: document.getElementById('im_name').value.trim()||'Sin nombre',
+    qty: +document.getElementById('im_qty').value||1,
+    client: document.getElementById('im_client').value.trim(),
+    printerId: document.getElementById('im_printer').value,
+    fils,
+    timeH: +document.getElementById('im_h').value||0,
+    timeM: +document.getElementById('im_m').value||0,
+    status: document.getElementById('im_status').value,
+    cost: +document.getElementById('im_cost').value||0,
+    price: +document.getElementById('im_price').value||0,
+    paid: !!document.querySelector('#im_paid button.on[data-v="1"]'),
+    delivered: !!document.querySelector('#im_deliv button.on[data-v="1"]'),
+    notes: document.getElementById('im_notes').value.trim()
+  };
+  if(iid){const i=data.impresiones.findIndex(x=>x.id===iid); if(i>-1) data.impresiones[i]=obj; else data.impresiones.push(obj);}
+  else data.impresiones.push(obj);
+  persist(); renderRegistro(); closeSheet(); toast(iid?'Impresión actualizada':'Impresión registrada');
+}
+function delImpresion(iid){
+  if(!confirm('¿Eliminar este registro de impresión?')) return;
+  data.impresiones=data.impresiones.filter(x=>x.id!==iid);
+  persist(); renderRegistro(); closeSheet(); toast('Registro eliminado');
 }
 
 /* ---------------- sheet infra ---------------- */
