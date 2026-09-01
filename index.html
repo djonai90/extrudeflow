@@ -1422,6 +1422,7 @@ function fmtDay(iso){if(!iso)return '';const p=iso.split('-');return (+p[2])+' '
 function monthTitle(key){const p=key.split('-');const m=MES_LARGO[(+p[1])-1]||'';return m.charAt(0).toUpperCase()+m.slice(1)+' '+p[0]}
 
 function renderRegistro(){
+  openSwipe=null;
   const imps=Array.isArray(data.impresiones)?data.impresiones:(data.impresiones=[]);
   const list=imps.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(b.id).localeCompare(String(a.id)));
   const nowKey=todayISO().slice(0,7);
@@ -1453,15 +1454,25 @@ function renderRegistro(){
     const g=impGrams(im),h=impHours(im);
     const cfg=[im.layerH&&(im.layerH+' mm'), im.infill&&(im.infill+'%')].filter(Boolean).join('/');
     const meta=[fmtDay(im.date), im.client&&esc(im.client), g&&(Math.round(g)+' g'), h&&((Math.round(h*10)/10)+' h'), cfg].filter(Boolean).join(' · ');
-    html+=`<div class="list-item" onclick="openImpresion('${im.id}')">
-      <span class="sdot ${im.status||'ok'}"></span>
-      ${(im.photos&&im.photos[0])?`<img class="rowthumb" src="/api/images/${im.photos[0]}" alt="" loading="lazy">`:''}
-      <div class="meta"><div class="t">${esc(im.name||'Sin nombre')}${(+im.qty>1)?' ×'+(+im.qty):''}</div><div class="s">${meta}</div></div>
-      ${(+im.cost>0)?`<div class="val faint">${money(im.cost)}</div>`:''}
-      <span class="chev">›</span>
+    html+=`<div class="swipe-wrap">
+      <button class="swipe-del" onclick="delImpresion('${im.id}')">Eliminar</button>
+      <div class="list-item swipe-face" onclick="tapImpresion(event,'${im.id}')">
+        <span class="sdot ${im.status||'ok'}"></span>
+        ${(im.photos&&im.photos[0])?`<img class="rowthumb" src="/api/images/${im.photos[0]}" alt="" loading="lazy">`:''}
+        <div class="meta"><div class="t">${esc(im.name||'Sin nombre')}${(+im.qty>1)?' ×'+(+im.qty):''}</div><div class="s">${meta}</div></div>
+        ${(+im.cost>0)?`<div class="val faint">${money(im.cost)}</div>`:''}
+        <span class="chev">›</span>
+      </div>
     </div>`;
   });
   el.innerHTML=html;
+  bindSwipe(el);
+}
+function tapImpresion(e, iid){
+  const face=e.currentTarget;
+  if(face._noClick) return;
+  if(openSwipe){ closeSwipe(); return; }
+  openImpresion(iid);
 }
 
 function impFilOptions(sel){
@@ -1617,9 +1628,16 @@ function saveImpresion(iid){
   persist(); renderRegistro(); closeSheet(); toast(iid?'Impresión actualizada':'Impresión registrada');
 }
 function delImpresion(iid){
-  if(!confirm('¿Eliminar este registro de impresión?')) return;
-  data.impresiones=data.impresiones.filter(x=>x.id!==iid);
-  persist(); renderRegistro(); closeSheet(); toast('Registro eliminado');
+  const idx=data.impresiones.findIndex(x=>x.id===iid);
+  if(idx<0) return;
+  const removed=data.impresiones[idx];
+  data.impresiones.splice(idx,1);
+  openSwipe=null;
+  persist(); renderRegistro(); closeSheet();
+  toast('Registro eliminado', { label:'Deshacer', fn:()=>{
+    data.impresiones.splice(Math.min(idx,data.impresiones.length),0,removed);
+    persist(); renderRegistro(); toast('Registro restaurado');
+  }});
 }
 
 /* ---------------- sheet infra ---------------- */
