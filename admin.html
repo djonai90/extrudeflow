@@ -6,6 +6,8 @@
 <title>ExtrudeFlow · Administración</title>
 <meta name="theme-color" content="#0d100e">
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   :root{
     --bg:#0d100e;--panel:#161a17;--panel-2:#1e2320;--line:#2a302c;
@@ -270,6 +272,10 @@ function flash(text, isErr) {
   el.textContent = text;
   clearTimeout(flash._t);
   flash._t = setTimeout(() => { el.textContent = ''; }, 6000);
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 </script>
 </body>
