@@ -1417,9 +1417,12 @@ function renderRegistro(){
     const q=+im.qty||1;
     s.n++; s.g+=impGrams(im)*q; s.h+=impHours(im);
     s.income+=(+im.price||0); if(!im.paid) s.due+=(+im.price||0);
+    s.cost+=(+im.cost||0);
     if(im.status==='fail') s.fail++;
+    if(im.status==='reprint') s.reprint++;
     return s;
-  },{n:0,g:0,h:0,income:0,due:0,fail:0});
+  },{n:0,g:0,h:0,income:0,due:0,cost:0,fail:0,reprint:0});
+  const profit=sum.income-sum.cost;
 
   document.getElementById('reg_monthLabel').textContent='Este mes · '+monthTitle(nowKey);
   document.getElementById('reg_stats').innerHTML=`
@@ -1427,8 +1430,11 @@ function renderRegistro(){
     <div class="stat"><div class="n">${Math.round(sum.g)}</div><div class="k">gramos</div></div>
     <div class="stat"><div class="n">${sum.h.toFixed(1)}</div><div class="k">horas</div></div>
     <div class="stat"><div class="n money accent">${money(sum.income)}</div><div class="k">ingresos</div></div>
+    <div class="stat"><div class="n money">${money(sum.cost)}</div><div class="k">costo</div></div>
+    <div class="stat"><div class="n money ${profit<0?'warn':''}">${money(profit)}</div><div class="k">ganancia</div></div>
     <div class="stat"><div class="n money ${sum.due>0?'warn':''}">${money(sum.due)}</div><div class="k">por cobrar</div></div>
-    <div class="stat"><div class="n">${sum.fail}</div><div class="k">fallidas</div></div>`;
+    <div class="stat"><div class="n">${sum.fail}</div><div class="k">fallidas</div></div>
+    <div class="stat"><div class="n">${sum.reprint}</div><div class="k">reimpresiones</div></div>`;
 
   const el=document.getElementById('reg_list');
   if(!list.length){el.innerHTML='<div class="empty">Aún no registras impresiones.<br>Toca “Registrar impresión”.</div>';return}
@@ -1461,15 +1467,17 @@ function addImpFilLine(filId,grams){
   div.innerHTML=`<select class="ifsel">${impFilOptions(filId||'')}</select>
     <input type="number" class="ifg" min="0" placeholder="g" value="${grams!=null?grams:''}">
     <span class="unit">g</span>
-    <span class="x" onclick="this.parentNode.remove()">×</span>`;
+    <span class="x" onclick="this.parentNode.remove();updateImpCost()">×</span>`;
   wrap.appendChild(div);
+  div.querySelector('.ifsel').onchange=updateImpCost;
+  div.querySelector('.ifg').oninput=updateImpCost;
 }
 function pickToggle(groupId,v){
   document.querySelectorAll('#'+groupId+' button').forEach(b=>b.classList.toggle('on',+b.dataset.v===v));
 }
 
 function openImpresion(iid){
-  const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,status:'ok',nozzle:'0.4',layerH:0.2,infill:15,support:'Sin soporte',cost:0,price:0,paid:false,delivered:false,notes:''};
+  const blank={id:null,date:todayISO(),name:'',qty:1,client:'',printerId:(data.printers[0]&&data.printers[0].id)||'',fils:[],timeH:0,timeM:0,laborMin:0,status:'ok',nozzle:'0.4',layerH:0.2,infill:15,support:'Sin soporte',cost:0,price:0,paid:false,delivered:false,notes:''};
   const im=iid?Object.assign({},blank,data.impresiones.find(x=>x.id===iid)||{}):blank;
   impPhotos=(im.photos||[]).slice();
   const printerOpts='<option value="">— ninguna —</option>'+data.printers.map(p=>`<option value="${p.id}" ${p.id===im.printerId?'selected':''}>${esc(p.name)}</option>`).join('');
@@ -1491,6 +1499,7 @@ function openImpresion(iid){
           <input class="num" id="im_h" type="number" min="0" value="${+im.timeH||0}" style="width:56px"><span class="unit">h</span>
           <input class="num" id="im_m" type="number" min="0" max="59" value="${+im.timeM||0}" style="width:56px"><span class="unit">min</span>
         </div></div>
+        <div class="row"><div class="lbl">Trabajo manual <small>soportes, lijado, pintura…</small></div><div class="right"><input class="num" id="im_labor" type="number" min="0" value="${+im.laborMin||0}" style="width:56px"><span class="unit">min</span></div></div>
       </div>
       <div class="card" id="im_filWrap" style="margin-top:8px"></div>
       <div style="padding:8px 0"><button class="btn ghost sm" onclick="addImpFilLine()">+ Agregar filamento</button></div>
@@ -1510,8 +1519,9 @@ function openImpresion(iid){
 
       <div class="section-label">Dinero</div>
       <div class="card">
-        <div class="row"><div class="lbl">Costo estimado <small>material, luz, etc.</small></div><div class="right"><input class="num" id="im_cost" type="number" min="0" value="${+im.cost||0}" style="width:80px"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl">Costo estimado <small id="im_costBreak"></small></div><div class="right"><b id="im_costVal">—</b></div></div>
         <div class="row"><div class="lbl">Precio cobrado</div><div class="right"><input class="num" id="im_price" type="number" min="0" value="${+im.price||0}" style="width:80px"><span class="unit">${cur()}</span></div></div>
+        <div class="row"><div class="lbl muted">Ganancia</div><div class="right muted" id="im_profit">—</div></div>
         <div class="row"><div class="lbl">Pagado</div><div class="right toggle-row" style="width:150px" id="im_paid">
           <button type="button" data-v="1" class="${im.paid?'on':''}" onclick="pickToggle('im_paid',1)">Sí</button>
           <button type="button" data-v="0" class="${im.paid?'':'on'}" onclick="pickToggle('im_paid',0)">No</button>
@@ -1536,6 +1546,45 @@ function openImpresion(iid){
   const rows=(im.fils&&im.fils.length)?im.fils:[null];
   rows.forEach(x=> x ? addImpFilLine(x.filId,x.grams) : addImpFilLine());
   renderImpPhotos();
+  ['im_qty','im_h','im_m','im_printer','im_labor','im_price'].forEach(idn=>{
+    const e=document.getElementById(idn); if(e) e.oninput=e.onchange=updateImpCost;
+  });
+  updateImpCost();
+}
+
+function impComputeCost(){
+  const g=idn=>document.getElementById(idn);
+  const s=data.settings;
+  const qty=Math.max(1,Math.floor(+g('im_qty').value||1));
+  const hours=(+g('im_h').value||0)+(+g('im_m').value||0)/60;
+  let material=0;
+  document.querySelectorAll('#im_filWrap .fil-line').forEach(l=>{
+    const f=data.filaments.find(x=>x.id===l.querySelector('.ifsel').value);
+    const gr=+l.querySelector('.ifg').value||0;
+    if(f) material+=gramCost(f)*gr;
+  });
+  material*=qty;
+  const p=data.printers.find(x=>x.id===g('im_printer').value);
+  const watts=p?p.watts:0;
+  const elec=(watts/1000)*hours*qty*(s.kwh||0);
+  const machine=(s.machineHour||0)*hours*qty;
+  const labor=(s.laborHour||0)*((+g('im_labor').value||0)/60)*qty;
+  return { material, elec, machine, labor, total: material+elec+machine+labor };
+}
+function updateImpCost(){
+  if(!document.getElementById('im_costVal')) return;
+  const r=impComputeCost();
+  document.getElementById('im_costVal').textContent=money(r.total);
+  const parts=[];
+  if(r.material>0) parts.push('material '+r.material.toFixed(2));
+  if(r.elec>0)     parts.push('luz '+r.elec.toFixed(2));
+  if(r.machine>0)  parts.push('máquina '+r.machine.toFixed(2));
+  if(r.labor>0)    parts.push('manual '+r.labor.toFixed(2));
+  document.getElementById('im_costBreak').textContent=parts.join(' · ');
+  const price=+document.getElementById('im_price').value||0;
+  const pe=document.getElementById('im_profit');
+  pe.textContent=money(price-r.total);
+  pe.style.color = price>0 ? (price-r.total>=0?'var(--accent)':'var(--danger)') : '';
 }
 
 function saveImpresion(iid){
@@ -1552,13 +1601,14 @@ function saveImpresion(iid){
     fils,
     timeH: +document.getElementById('im_h').value||0,
     timeM: +document.getElementById('im_m').value||0,
+    laborMin: +document.getElementById('im_labor').value||0,
     nozzle: document.getElementById('im_nozzle').value||'',
     layerH: +document.getElementById('im_layerH').value||0,
     infill: +document.getElementById('im_infill').value||0,
     support: document.getElementById('im_support').value||'',
     photos: impPhotos.slice(),
     status: document.getElementById('im_status').value,
-    cost: +document.getElementById('im_cost').value||0,
+    cost: Math.round(impComputeCost().total*100)/100,
     price: +document.getElementById('im_price').value||0,
     paid: !!document.querySelector('#im_paid button.on[data-v="1"]'),
     delivered: !!document.querySelector('#im_deliv button.on[data-v="1"]'),
