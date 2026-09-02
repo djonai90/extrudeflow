@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "init-db": "node scripts/init-db.mjs",
     "create-admin": "node scripts/create-admin.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.0"
+    "@neondatabase/serverless": "^1.0.0",
+    "web-push": "^3.6.7"
   }
 }

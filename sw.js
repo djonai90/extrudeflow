@@ -1,5 +1,5 @@
 /* ExtrudeFlow service worker — caches the app shell, never the API. */
-const CACHE = 'ef-shell-v17';
+const CACHE = 'ef-shell-v18';
 const SHELL = [
   '/',
   '/admin',
@@ -46,6 +46,34 @@ self.addEventListener('fetch', (e) => {
         })
         .catch(() => cached || (req.mode === 'navigate' ? cache.match('/') : undefined));
       return cached || network;
+    })
+  );
+});
+
+// ---- Web Push: payment reminders ----
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data && e.data.text() }; }
+  const title = d.title || 'ExtrudeFlow';
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: d.tag || 'ef-notice',
+    renotify: true,
+    data: { url: d.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) { c.navigate(target).catch(() => {}); return c.focus(); }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     })
   );
 });

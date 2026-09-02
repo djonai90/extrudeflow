@@ -643,6 +643,13 @@
 
     <div style="padding:12px 0 4px"><button class="btn ghost sm" onclick="bkAddRow()">+ Agregar tarjeta</button></div>
     <p class="hint">Pago NGI = pago para no generar intereses. Cada pestaña es un periodo de corte/pago; el botón “+” copia tus tarjetas y sus fechas límite con los montos en blanco. Todo se guarda solo.</p>
+
+    <div class="card" id="bk_remindCard" style="margin-top:18px;display:none">
+      <div class="row">
+        <div class="lbl">Recordatorios de pago <small id="bk_remindSub">Aviso 2 días antes de cada fecha límite.</small></div>
+        <div class="right"><button class="btn ghost sm" id="bk_remindBtn" onclick="bkToggleReminders()">Activar</button></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -2132,7 +2139,76 @@ function bkRows(){ return bkState.sheets[bkState.activeId] || (bkState.sheets[bk
 
 function bkRender(){
   if(!(currentUser && currentUser.role==='admin')) return;
-  bkEnsure(); bkRenderTabs(); bkRenderTable();
+  bkEnsure(); bkRenderTabs(); bkRenderTable(); bkRefreshReminders();
+}
+
+/* ---- recordatorios push ---- */
+let bkPushBusy=false;
+function bkVapidToU8(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(s), u=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) u[i]=raw.charCodeAt(i);
+  return u;
+}
+async function bkRefreshReminders(){
+  const card=document.getElementById('bk_remindCard'); if(!card) return;
+  const btn=document.getElementById('bk_remindBtn'), sub=document.getElementById('bk_remindSub');
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = navigator.standalone===true || (matchMedia && matchMedia('(display-mode: standalone)').matches);
+  card.style.display='';
+  if(!supported){
+    btn.style.display='none';
+    sub.textContent = (isiOS && !standalone)
+      ? 'Agrega ExtrudeFlow a la pantalla de inicio (Compartir → Agregar a inicio) y ábrela desde ahí para activar las notificaciones.'
+      : 'Este navegador no soporta notificaciones push.';
+    return;
+  }
+  if(Notification.permission==='denied'){
+    btn.style.display='none';
+    sub.textContent='Notificaciones bloqueadas. Habilítalas en los ajustes del sistema para este sitio.';
+    return;
+  }
+  btn.style.display='';
+  let existing=null;
+  try{ const reg=await navigator.serviceWorker.ready; existing=await reg.pushManager.getSubscription(); }catch(e){}
+  if(existing){
+    btn.textContent='Desactivar';
+    sub.textContent='Activados — aviso 2 días antes de cada fecha límite (~9 a.m.).';
+  }else{
+    btn.textContent='Activar';
+    sub.textContent='Aviso 2 días antes de cada fecha límite de pago.';
+  }
+}
+async function bkToggleReminders(){
+  if(bkPushBusy) return; bkPushBusy=true;
+  const btn=document.getElementById('bk_remindBtn');
+  btn.disabled=true; const prev=btn.textContent; btn.textContent='…';
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const existing=await reg.pushManager.getSubscription();
+    if(existing){
+      try{ await api('/push/subscribe',{method:'DELETE',body:{endpoint:existing.endpoint}}); }catch(e){}
+      await existing.unsubscribe();
+      toast('Recordatorios desactivados');
+    }else{
+      const perm=await Notification.requestPermission();
+      if(perm!=='granted'){ toast('Permiso no concedido'); return; }
+      const r=await api('/push/public-key');
+      if(!r || !r.key){ toast('Notificaciones no configuradas en el servidor'); return; }
+      const sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:bkVapidToU8(r.key)});
+      await api('/push/subscribe',{method:'POST',body:{subscription:sub.toJSON()}});
+      try{ await api('/push/test',{method:'POST'}); }catch(e){}
+      toast('Recordatorios activados');
+    }
+  }catch(e){
+    btn.textContent=prev;
+    toast((e&&e.message)||'No se pudo cambiar');
+  }finally{
+    btn.disabled=false; bkPushBusy=false;
+    bkRefreshReminders();
+  }
 }
 function bkRenderTabs(){
   const t=document.getElementById('bk_tabs');

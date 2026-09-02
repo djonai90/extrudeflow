@@ -46,6 +46,24 @@ const statements = [
      created_at timestamptz NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS images_user_idx ON images (user_id)`,
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
+     id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     endpoint   text NOT NULL UNIQUE,
+     p256dh     text NOT NULL,
+     auth       text NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     last_ok_at timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS push_subs_user_idx ON push_subscriptions (user_id)`,
+  `CREATE TABLE IF NOT EXISTS payment_reminders_sent (
+     user_id   bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     dedup_key text NOT NULL,
+     due_date  date NOT NULL,
+     sent_at   timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (user_id, dedup_key)
+   )`,
+  `CREATE INDEX IF NOT EXISTS payment_reminders_due_idx ON payment_reminders_sent (due_date)`,
 ];
 
 try {
