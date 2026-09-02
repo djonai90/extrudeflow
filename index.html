@@ -2189,17 +2189,17 @@ async function bkToggleReminders(){
     const reg=await navigator.serviceWorker.ready;
     const existing=await reg.pushManager.getSubscription();
     if(existing){
-      try{ await api('/push/subscribe',{method:'DELETE',body:{endpoint:existing.endpoint}}); }catch(e){}
+      try{ await api('/push',{method:'DELETE',body:{endpoint:existing.endpoint}}); }catch(e){}
       await existing.unsubscribe();
       toast('Recordatorios desactivados');
     }else{
       const perm=await Notification.requestPermission();
       if(perm!=='granted'){ toast('Permiso no concedido'); return; }
-      const r=await api('/push/public-key');
+      const r=await api('/push');
       if(!r || !r.key){ toast('Notificaciones no configuradas en el servidor'); return; }
       const sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:bkVapidToU8(r.key)});
-      await api('/push/subscribe',{method:'POST',body:{subscription:sub.toJSON()}});
-      try{ await api('/push/test',{method:'POST'}); }catch(e){}
+      await api('/push',{method:'POST',body:{subscription:sub.toJSON()}});
+      try{ await api('/push',{method:'POST',body:{test:true}}); }catch(e){}
       toast('Recordatorios activados');
     }
   }catch(e){
