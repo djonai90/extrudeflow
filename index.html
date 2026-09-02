@@ -289,6 +289,51 @@
   }
   #lightbox.show{display:flex}
   #lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+
+  /* bancos (solo admin) */
+  #v-bancos .wrap{max-width:920px}
+  .bk-tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+  .bk-tabs::-webkit-scrollbar{display:none}
+  .bk-ptab{
+    flex:0 0 auto;background:var(--panel);border:1px solid var(--line);color:var(--ink-soft);
+    font-family:inherit;font-size:13px;font-weight:600;padding:8px 13px;border-radius:20px;cursor:pointer;white-space:nowrap;
+  }
+  .bk-ptab.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .bk-ptab.add{width:38px;padding:8px 0;text-align:center;font-size:16px}
+  .bk-ptitle{display:flex;align-items:baseline;gap:12px;margin:2px 2px 12px;flex-wrap:wrap}
+  .bk-ptitle #bk_pname{font-size:16px;font-weight:700}
+  .bk-lnk{background:none;border:none;color:var(--ink-faint);font-family:inherit;font-size:12px;cursor:pointer;padding:2px 0;text-decoration:underline}
+  .bk-sumrow{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .bk-sumcard{flex:1;min-width:132px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:13px 15px}
+  .bk-sumcard .k{font-size:12px;color:var(--ink-faint)}
+  .bk-sumcard .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:3px}
+  .bk-sumcard .v.warn{color:var(--warn)}
+  .bk-tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);-webkit-overflow-scrolling:touch}
+  .bk-table{border-collapse:separate;border-spacing:0;width:100%;min-width:640px;font-size:13.5px}
+  .bk-table thead th{
+    text-align:left;color:var(--ink-faint);font-weight:600;font-size:11.5px;
+    padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--panel);
+  }
+  .bk-table tbody td{padding:0;border-bottom:1px solid var(--line)}
+  .bk-table tbody tr:last-child td{border-bottom:none}
+  .bk-table th.c-banco,.bk-table td.c-banco{position:sticky;left:0;z-index:2;background:var(--panel);min-width:128px}
+  .bk-table td.c-banco{box-shadow:1px 0 0 var(--line)}
+  .bk-table tbody td input{
+    width:100%;border:none;background:transparent;color:var(--ink);font-family:inherit;font-size:13.5px;
+    padding:12px 8px;outline:none;border-radius:0;
+  }
+  .bk-table tbody td input:focus{background:#000}
+  .bk-table td[data-col="saldo"] input,.bk-table td[data-col="pagoNGI"] input,.bk-table td[data-col="pagoMin"] input{text-align:right;font-variant-numeric:tabular-nums}
+  .bk-table .c-banco input{font-weight:600}
+  .bk-table tr.paid .c-banco input{color:var(--accent)}
+  .bk-table tr.paid td input{color:var(--ink-soft)}
+  .bk-table td.c-del{width:34px;text-align:center}
+  .bk-table .rowdel{background:none;border:none;color:var(--ink-faint);font-size:17px;cursor:pointer;padding:8px 6px;line-height:1}
+  .bk-table tfoot td{
+    padding:11px 8px;border-top:2px solid var(--line);font-weight:800;font-variant-numeric:tabular-nums;
+    text-align:right;color:var(--ink);background:var(--panel-2);
+  }
+  .bk-table tfoot td.c-banco{text-align:left;color:var(--ink-faint);font-weight:600}
 </style>
 </head>
 <body>
@@ -541,9 +586,6 @@
       <a class="row" id="adminLink" href="/admin" style="display:none;text-decoration:none;color:inherit">
         <div class="lbl">Panel de administrador</div><div class="right chev">›</div>
       </a>
-      <a class="row" id="bancosLink" href="/bancos" style="display:none;text-decoration:none;color:inherit">
-        <div class="lbl">Bancos <small>pagos de tarjetas</small></div><div class="right chev">›</div>
-      </a>
     </div>
 
     <div class="section-label">Datos</div>
@@ -554,6 +596,48 @@
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
     <p class="hint">Tus datos se guardan en tu cuenta y se sincronizan en la nube. Usa Exportar para tener un respaldo local.</p>
+  </div>
+</section>
+
+<!-- ============ BANCOS (solo admin) ============ -->
+<section class="view" id="v-bancos">
+  <div class="wrap">
+    <div class="section-label">Periodo de pago</div>
+    <div class="bk-tabs" id="bk_tabs"></div>
+    <div class="bk-ptitle">
+      <span id="bk_pname"></span>
+      <button class="bk-lnk" onclick="bkRenamePeriod()">renombrar</button>
+      <button class="bk-lnk" onclick="bkDelPeriod()">eliminar periodo</button>
+    </div>
+
+    <div class="bk-sumrow">
+      <div class="bk-sumcard"><div class="k">Total pago mínimo</div><div class="v" id="bk_hmin">$0</div></div>
+      <div class="bk-sumcard"><div class="k">Pendiente por pagar</div><div class="v warn" id="bk_hpend">$0</div></div>
+      <div class="bk-sumcard"><div class="k">Saldo total</div><div class="v" id="bk_hsaldo">$0</div></div>
+    </div>
+
+    <div class="bk-tablewrap">
+      <table class="bk-table" id="bk_table">
+        <thead><tr>
+          <th class="c-banco">Banco / tarjeta</th>
+          <th>Saldo</th><th>Pago NGI</th><th>Pago mín.</th><th>Fecha límite</th><th>Estado</th>
+          <th class="c-del"></th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot><tr>
+          <td class="c-banco">Totales</td>
+          <td id="bk_tsaldo"></td><td id="bk_tngi"></td><td id="bk_tmin"></td>
+          <td></td><td></td><td></td>
+        </tr></tfoot>
+      </table>
+    </div>
+
+    <div style="padding:12px 0 4px"><button class="btn ghost sm" onclick="bkAddRow()">+ Agregar tarjeta</button></div>
+    <p class="hint">Pago NGI = pago para no generar intereses. Cada pestaña es un periodo de corte/pago; el botón “+” copia tus tarjetas y sus fechas límite con los montos en blanco. Todo se guarda solo.</p>
+
+    <datalist id="bk_estados">
+      <option>Pagado</option><option>Pendiente</option><option>Vencido</option><option>Parcial</option>
+    </datalist>
   </div>
 </section>
 
@@ -586,6 +670,10 @@
   <button data-view="settings" onclick="go('settings')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
     Ajustes
+  </button>
+  <button data-view="bancos" onclick="go('bancos')" id="navBancos" style="display:none">
+    <svg viewBox="0 0 24 24"><path d="M3 10l9-5 9 5M5 10v8M19 10v8M9 10v8M15 10v8M3 20h18"/></svg>
+    Bancos
   </button>
 </nav>
 
@@ -717,6 +805,7 @@ function normalizeData(){
   data.figures = Array.isArray(data.figures)?data.figures:[];
   data.impresiones = Array.isArray(data.impresiones)?data.impresiones:[];
   data.ventas = Array.isArray(data.ventas)?data.ventas:[];
+  if(data.bancos!=null && (typeof data.bancos!=='object' || Array.isArray(data.bancos))) data.bancos = null;
 }
 
 async function startApp(){
@@ -745,8 +834,8 @@ async function startApp(){
   const isAdmin = currentUser.role==='admin';
   const adminLink=document.getElementById('adminLink');
   if(adminLink) adminLink.style.display = isAdmin ? '' : 'none';
-  const bancosLink=document.getElementById('bancosLink');
-  if(bancosLink) bancosLink.style.display = isAdmin ? '' : 'none';
+  const navBancos=document.getElementById('navBancos');
+  if(navBancos) navBancos.style.display = isAdmin ? '' : 'none';
 
   document.body.classList.add('authed');
   refreshCurrencyLabels();
@@ -784,16 +873,18 @@ function refreshCurrencyLabels(){
 
 /* ---------------- navigation ---------------- */
 function go(v){
+  if(v==='bancos' && !(currentUser && currentUser.role==='admin')) v='calc';
   if(typeof closeSwipe==='function') closeSwipe();
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
-  const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',ventas:'Registro de ventas',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración'};
+  const subs={calc:'Cotiza una figura',figs:'Tus figuras',registro:'Bitácora de impresiones',ventas:'Registro de ventas',printers:'Tus máquinas',fils:'Tu material',settings:'Configuración',bancos:'Pagos de tarjetas'};
   document.getElementById('hdrSub').textContent=subs[v]||'';
   // refresh the view's dynamic content on entry (safety net for any missed in-place update)
   if(v==='registro') renderRegistro();
   if(v==='ventas') renderVentas();
   if(v==='figs') renderFigures();
+  if(v==='bancos') bkRender();
   if(v==='settings' && typeof refreshStorageInfo==='function') refreshStorageInfo();
   window.scrollTo(0,0);
 }
@@ -1994,6 +2085,134 @@ function toast(msg, action){
   t.classList.add('show');
   clearTimeout(toastT);
   toastT=setTimeout(()=>{ t.classList.remove('show'); t.onclick=null; }, action ? 6000 : 1600);
+}
+
+/* ---------------- bancos (solo admin) ---------------- */
+const BK_SEED=['BBVA','BANORTE','LIVERPOOL PINK','LIVERPOOL BLACK','MERCADO PAGO TC','BANAMEX','OPENBANK','PALACIO','HIPOTECA BBVA','REVOLUT'];
+let bkState=null;
+const bkNum=s=>{const n=parseFloat(String(s).replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n};
+const bkFmt=n=>'$'+Math.round(n).toLocaleString('es-MX');
+const bkPaid=s=>/pag/i.test(s||'');
+
+function bkDefaultPeriodName(){
+  const M=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const d=new Date(),a=d.getMonth(),b=(a+1)%12;
+  return M[a]+'–'+M[b]+' '+(d.getFullYear()+(b<a?1:0));
+}
+function bkSeedRows(){return BK_SEED.map(n=>({id:id(),banco:n,saldo:'',pagoNGI:'',pagoMin:'',fecha:'',estado:''}))}
+function bkNormalize(b){
+  if(b && Array.isArray(b.periods) && b.periods.length && b.sheets){
+    b.sheets = b.sheets || {};
+    b.periods.forEach(p=>{ if(!Array.isArray(b.sheets[p.id])) b.sheets[p.id]=[]; });
+    if(!b.activeId || !b.periods.find(p=>p.id===b.activeId)) b.activeId=b.periods[0].id;
+    return b;
+  }
+  const i=id();
+  return { periods:[{id:i,name:bkDefaultPeriodName()}], activeId:i, sheets:{[i]:bkSeedRows()} };
+}
+function bkEnsure(){
+  if(!bkState){
+    bkState = bkNormalize(data.bancos);
+    data.bancos = bkState;            // live reference so persist() saves edits
+  }
+}
+function bkRows(){ return bkState.sheets[bkState.activeId] || (bkState.sheets[bkState.activeId]=[]); }
+
+function bkRender(){
+  if(!(currentUser && currentUser.role==='admin')) return;
+  bkEnsure(); bkRenderTabs(); bkRenderTable();
+}
+function bkRenderTabs(){
+  const t=document.getElementById('bk_tabs');
+  t.innerHTML = bkState.periods.map(p=>`<button class="bk-ptab ${p.id===bkState.activeId?'on':''}" data-id="${p.id}">${esc(p.name)}</button>`).join('')
+    + `<button class="bk-ptab add" id="bk_add" title="Nuevo periodo">+</button>`;
+  t.querySelectorAll('.bk-ptab[data-id]').forEach(b=>b.onclick=()=>{
+    bkState.activeId=b.dataset.id; bkRenderTabs(); bkRenderTable(); persist();
+  });
+  document.getElementById('bk_add').onclick=bkAddPeriod;
+  const p=bkState.periods.find(x=>x.id===bkState.activeId);
+  document.getElementById('bk_pname').textContent = p ? p.name : '';
+}
+function bkRenderTable(){
+  const rows=bkRows();
+  const cols=['banco','saldo','pagoNGI','pagoMin','fecha','estado'];
+  const tb=document.querySelector('#bk_table tbody');
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--ink-faint)">Sin tarjetas. Toca “+ Agregar tarjeta”.</td></tr>';
+    bkUpdateTotals(); return;
+  }
+  tb.innerHTML = rows.map((r,i)=>`
+    <tr data-i="${i}" class="${bkPaid(r.estado)?'paid':''}">
+      ${cols.map(f=>`<td data-col="${f}" class="${f==='banco'?'c-banco':''}">
+        <input data-f="${f}" value="${esc(r[f])}" ${['saldo','pagoNGI','pagoMin'].includes(f)?'inputmode="decimal"':''} ${f==='estado'?'list="bk_estados"':''} placeholder="${f==='banco'?'Banco / tarjeta':f==='fecha'?'dd-mmm':'—'}">
+      </td>`).join('')}
+      <td class="c-del"><button class="rowdel" title="Eliminar">×</button></td>
+    </tr>`).join('');
+  tb.querySelectorAll('tr[data-i]').forEach(tr=>{
+    const i=+tr.dataset.i;
+    tr.querySelectorAll('input').forEach(inp=>{
+      inp.addEventListener('input',()=>{
+        bkRows()[i][inp.dataset.f]=inp.value;
+        tr.classList.toggle('paid', bkPaid(bkRows()[i].estado));
+        bkUpdateTotals(); persist();
+      });
+    });
+    tr.querySelector('.rowdel').onclick=()=>{
+      const r=bkRows()[i];
+      if((r.banco||r.saldo||r.pagoMin) && !confirm('¿Eliminar la fila de “'+(r.banco||'sin nombre')+'”?')) return;
+      bkRows().splice(i,1); bkRenderTable(); persist();
+    };
+  });
+  bkUpdateTotals();
+}
+function bkUpdateTotals(){
+  let saldo=0,ngi=0,mn=0,pend=0;
+  bkRows().forEach(r=>{
+    saldo+=bkNum(r.saldo); ngi+=bkNum(r.pagoNGI); mn+=bkNum(r.pagoMin);
+    if(!bkPaid(r.estado)) pend+=bkNum(r.pagoMin);
+  });
+  document.getElementById('bk_tsaldo').textContent = saldo?bkFmt(saldo):'';
+  document.getElementById('bk_tngi').textContent = ngi?bkFmt(ngi):'';
+  document.getElementById('bk_tmin').textContent = mn?bkFmt(mn):'';
+  document.getElementById('bk_hmin').textContent = bkFmt(mn);
+  document.getElementById('bk_hpend').textContent = bkFmt(pend);
+  document.getElementById('bk_hsaldo').textContent = bkFmt(saldo);
+}
+function bkAddRow(){
+  bkEnsure();
+  bkRows().push({id:id(),banco:'',saldo:'',pagoNGI:'',pagoMin:'',fecha:'',estado:''});
+  bkRenderTable(); persist();
+  const inp=document.querySelector('#bk_table tbody tr:last-child input');
+  if(inp) inp.focus();
+}
+function bkAddPeriod(){
+  bkEnsure();
+  const name=prompt('Nombre del periodo (ej. “oct–nov 2026”):', bkDefaultPeriodName());
+  if(name===null) return;
+  const nm=name.trim(); if(!nm) return;
+  const i=id();
+  bkState.sheets[i]=bkRows().map(r=>({id:id(),banco:r.banco,saldo:'',pagoNGI:'',pagoMin:'',fecha:r.fecha,estado:''}));
+  bkState.periods.push({id:i,name:nm});
+  bkState.activeId=i;
+  bkRenderTabs(); bkRenderTable(); persist();
+}
+function bkRenamePeriod(){
+  bkEnsure();
+  const p=bkState.periods.find(x=>x.id===bkState.activeId); if(!p) return;
+  const name=prompt('Nuevo nombre del periodo:', p.name);
+  if(name===null) return;
+  const nm=name.trim(); if(!nm) return;
+  p.name=nm; bkRenderTabs(); persist();
+}
+function bkDelPeriod(){
+  bkEnsure();
+  if(bkState.periods.length<=1){ toast('Debe quedar al menos un periodo'); return; }
+  const p=bkState.periods.find(x=>x.id===bkState.activeId); if(!p) return;
+  if(!confirm('¿Eliminar el periodo “'+p.name+'” y todos sus datos?')) return;
+  delete bkState.sheets[bkState.activeId];
+  bkState.periods=bkState.periods.filter(x=>x.id!==bkState.activeId);
+  bkState.activeId=bkState.periods[0].id;
+  bkRenderTabs(); bkRenderTable(); persist();
 }
 
 /* ---------------- PWA service worker ---------------- */
