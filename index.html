@@ -541,6 +541,9 @@
       <a class="row" id="adminLink" href="/admin" style="display:none;text-decoration:none;color:inherit">
         <div class="lbl">Panel de administrador</div><div class="right chev">›</div>
       </a>
+      <a class="row" id="bancosLink" href="/bancos" style="display:none;text-decoration:none;color:inherit">
+        <div class="lbl">Bancos <small>pagos de tarjetas</small></div><div class="right chev">›</div>
+      </a>
     </div>
 
     <div class="section-label">Datos</div>
@@ -739,8 +742,11 @@ async function startApp(){
   normalizeData();
 
   const who=document.getElementById('whoami'); if(who) who.textContent=currentUser.username;
+  const isAdmin = currentUser.role==='admin';
   const adminLink=document.getElementById('adminLink');
-  if(adminLink) adminLink.style.display = currentUser.role==='admin' ? '' : 'none';
+  if(adminLink) adminLink.style.display = isAdmin ? '' : 'none';
+  const bancosLink=document.getElementById('bancosLink');
+  if(bancosLink) bancosLink.style.display = isAdmin ? '' : 'none';
 
   document.body.classList.add('authed');
   refreshCurrencyLabels();
