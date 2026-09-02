@@ -318,15 +318,24 @@
   .bk-table tbody tr:last-child td{border-bottom:none}
   .bk-table th.c-banco,.bk-table td.c-banco{position:sticky;left:0;z-index:2;background:var(--panel);min-width:128px}
   .bk-table td.c-banco{box-shadow:1px 0 0 var(--line)}
-  .bk-table tbody td input{
+  .bk-table tbody td input,.bk-table tbody td select{
     width:100%;border:none;background:transparent;color:var(--ink);font-family:inherit;font-size:13.5px;
     padding:12px 8px;outline:none;border-radius:0;
   }
-  .bk-table tbody td input:focus{background:#000}
+  .bk-table tbody td select{-webkit-appearance:none;appearance:none;cursor:pointer;font-weight:600;min-width:104px;white-space:nowrap}
+  .bk-table tbody td input:focus,.bk-table tbody td select:focus{background:#000}
+  .bk-table tbody td input[type=date]{color-scheme:dark;min-width:128px}
+  .bk-table tbody td input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.65);cursor:pointer}
+  .bk-table td[data-col="fecha"]{min-width:132px}
+  .bk-table td[data-col="estado"]{min-width:120px}
   .bk-table td[data-col="saldo"] input,.bk-table td[data-col="pagoNGI"] input,.bk-table td[data-col="pagoMin"] input{text-align:right;font-variant-numeric:tabular-nums}
   .bk-table .c-banco input{font-weight:600}
-  .bk-table tr.paid .c-banco input{color:var(--accent)}
-  .bk-table tr.paid td input{color:var(--ink-soft)}
+  /* estado = pagado → renglón completo llamativo */
+  .bk-table tr.paid td{background:rgba(74,222,128,.20)}
+  .bk-table tr.paid td.c-banco{background:#1e3a2a}
+  .bk-table tr.paid .c-banco input{color:var(--accent);font-weight:800}
+  .bk-table tr.paid td input,.bk-table tr.paid td select{color:var(--ink)}
+  .bk-table tr.paid td[data-col="estado"] select{color:var(--accent);font-weight:800}
   .bk-table td.c-del{width:34px;text-align:center}
   .bk-table .rowdel{background:none;border:none;color:var(--ink-faint);font-size:17px;cursor:pointer;padding:8px 6px;line-height:1}
   .bk-table tfoot td{
@@ -634,10 +643,6 @@
 
     <div style="padding:12px 0 4px"><button class="btn ghost sm" onclick="bkAddRow()">+ Agregar tarjeta</button></div>
     <p class="hint">Pago NGI = pago para no generar intereses. Cada pestaña es un periodo de corte/pago; el botón “+” copia tus tarjetas y sus fechas límite con los montos en blanco. Todo se guarda solo.</p>
-
-    <datalist id="bk_estados">
-      <option>Pagado</option><option>Pendiente</option><option>Vencido</option><option>Parcial</option>
-    </datalist>
   </div>
 </section>
 
@@ -2089,21 +2094,28 @@ function toast(msg, action){
 
 /* ---------------- bancos (solo admin) ---------------- */
 const BK_SEED=['BBVA','BANORTE','LIVERPOOL PINK','LIVERPOOL BLACK','MERCADO PAGO TC','BANAMEX','OPENBANK','PALACIO','HIPOTECA BBVA','REVOLUT'];
+const BK_UNPAID='No pagado', BK_PAID='Pagado';
 let bkState=null;
 const bkNum=s=>{const n=parseFloat(String(s).replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n};
 const bkFmt=n=>'$'+Math.round(n).toLocaleString('es-MX');
-const bkPaid=s=>/pag/i.test(s||'');
+const bkPaid=s=>/^\s*pagad/i.test(s||'');                 // "Pagado" sí, "No pagado" no
+const bkISO=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'')?s:'';
+function bkNewRow(banco){ return {id:id(),banco:banco||'',saldo:'',pagoNGI:'',pagoMin:'',fecha:'',estado:BK_UNPAID}; }
 
 function bkDefaultPeriodName(){
   const M=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   const d=new Date(),a=d.getMonth(),b=(a+1)%12;
   return M[a]+'–'+M[b]+' '+(d.getFullYear()+(b<a?1:0));
 }
-function bkSeedRows(){return BK_SEED.map(n=>({id:id(),banco:n,saldo:'',pagoNGI:'',pagoMin:'',fecha:'',estado:''}))}
+function bkSeedRows(){return BK_SEED.map(n=>bkNewRow(n))}
 function bkNormalize(b){
   if(b && Array.isArray(b.periods) && b.periods.length && b.sheets){
     b.sheets = b.sheets || {};
     b.periods.forEach(p=>{ if(!Array.isArray(b.sheets[p.id])) b.sheets[p.id]=[]; });
+    Object.values(b.sheets).forEach(rows=>rows.forEach(r=>{
+      r.estado = bkPaid(r.estado) ? BK_PAID : BK_UNPAID;   // solo dos estados
+      r.fecha = bkISO(r.fecha);                            // solo fechas ISO
+    }));
     if(!b.activeId || !b.periods.find(p=>p.id===b.activeId)) b.activeId=b.periods[0].id;
     return b;
   }
@@ -2141,21 +2153,34 @@ function bkRenderTable(){
     tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:22px;color:var(--ink-faint)">Sin tarjetas. Toca “+ Agregar tarjeta”.</td></tr>';
     bkUpdateTotals(); return;
   }
+  const cell=(r,f)=>{
+    if(f==='fecha') return `<td data-col="fecha"><input type="date" data-f="fecha" value="${bkISO(r.fecha)}"></td>`;
+    if(f==='estado'){
+      const paid=bkPaid(r.estado);
+      return `<td data-col="estado"><select data-f="estado">
+        <option value="${BK_UNPAID}"${paid?'':' selected'}>${BK_UNPAID}</option>
+        <option value="${BK_PAID}"${paid?' selected':''}>${BK_PAID}</option>
+      </select></td>`;
+    }
+    const im=['saldo','pagoNGI','pagoMin'].includes(f)?' inputmode="decimal"':'';
+    const ph=f==='banco'?'Banco / tarjeta':'—';
+    return `<td data-col="${f}"${f==='banco'?' class="c-banco"':''}><input data-f="${f}" value="${esc(r[f])}"${im} placeholder="${ph}"></td>`;
+  };
   tb.innerHTML = rows.map((r,i)=>`
     <tr data-i="${i}" class="${bkPaid(r.estado)?'paid':''}">
-      ${cols.map(f=>`<td data-col="${f}" class="${f==='banco'?'c-banco':''}">
-        <input data-f="${f}" value="${esc(r[f])}" ${['saldo','pagoNGI','pagoMin'].includes(f)?'inputmode="decimal"':''} ${f==='estado'?'list="bk_estados"':''} placeholder="${f==='banco'?'Banco / tarjeta':f==='fecha'?'dd-mmm':'—'}">
-      </td>`).join('')}
+      ${cols.map(f=>cell(r,f)).join('')}
       <td class="c-del"><button class="rowdel" title="Eliminar">×</button></td>
     </tr>`).join('');
   tb.querySelectorAll('tr[data-i]').forEach(tr=>{
     const i=+tr.dataset.i;
-    tr.querySelectorAll('input').forEach(inp=>{
-      inp.addEventListener('input',()=>{
-        bkRows()[i][inp.dataset.f]=inp.value;
+    tr.querySelectorAll('input,select').forEach(el=>{
+      const onEdit=()=>{
+        bkRows()[i][el.dataset.f]=el.value;
         tr.classList.toggle('paid', bkPaid(bkRows()[i].estado));
         bkUpdateTotals(); persist();
-      });
+      };
+      el.addEventListener('input',onEdit);
+      el.addEventListener('change',onEdit);
     });
     tr.querySelector('.rowdel').onclick=()=>{
       const r=bkRows()[i];
@@ -2180,7 +2205,7 @@ function bkUpdateTotals(){
 }
 function bkAddRow(){
   bkEnsure();
-  bkRows().push({id:id(),banco:'',saldo:'',pagoNGI:'',pagoMin:'',fecha:'',estado:''});
+  bkRows().push(bkNewRow());
   bkRenderTable(); persist();
   const inp=document.querySelector('#bk_table tbody tr:last-child input');
   if(inp) inp.focus();
@@ -2191,7 +2216,7 @@ function bkAddPeriod(){
   if(name===null) return;
   const nm=name.trim(); if(!nm) return;
   const i=id();
-  bkState.sheets[i]=bkRows().map(r=>({id:id(),banco:r.banco,saldo:'',pagoNGI:'',pagoMin:'',fecha:r.fecha,estado:''}));
+  bkState.sheets[i]=bkRows().map(r=>Object.assign(bkNewRow(r.banco),{fecha:bkISO(r.fecha)}));
   bkState.periods.push({id:i,name:nm});
   bkState.activeId=i;
   bkRenderTabs(); bkRenderTable(); persist();
