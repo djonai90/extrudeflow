@@ -1,5 +1,5 @@
 /* ExtrudeFlow service worker — caches the app shell, never the API. */
-const CACHE = 'ef-shell-v18';
+const CACHE = 'ef-shell-v19';
 const SHELL = [
   '/',
   '/admin',
