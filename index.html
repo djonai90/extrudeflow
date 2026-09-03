@@ -1683,9 +1683,13 @@ function openImpresion(iid){
       <div class="section-label">Notas</div>
       <div class="card"><div class="row"><input class="wide" id="im_notes" placeholder="Observaciones, ajustes, problemas…" value="${esc(im.notes)}"></div></div>
 
-      <div class="save-strip" style="display:flex;gap:10px">
-        <button class="btn block" onclick="saveImpresion('${im.id||''}')">${iid?'Actualizar':'Guardar'}</button>
-        ${iid?`<button class="btn danger sm" onclick="delImpresion('${iid}')">Eliminar</button>`:''}
+      <div class="save-strip" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:10px">
+          <button class="btn block" onclick="saveImpresion('${im.id||''}')">${iid?'Actualizar':'Guardar'}</button>
+          ${iid?`<button class="btn danger sm" onclick="delImpresion('${iid}')">Eliminar</button>`:''}
+        </div>
+        <button class="btn ghost block" onclick="impToCalc('${im.id||''}')">Cotizar en la calculadora →</button>
+        <p class="hint" style="margin:0 4px">Registra la impresión y abre la calculadora con estos datos para fijar precio y guardarla en Figuras.</p>
       </div>
     </div>`);
   const rows=(im.fils&&im.fils.length)?im.fils:[null];
@@ -1729,11 +1733,11 @@ function updateImpCost(){
   document.getElementById('im_costBreak').textContent=parts.join(' · ');
 }
 
-function saveImpresion(iid){
+function readImpForm(iid){
   const fils=[...document.querySelectorAll('#im_filWrap .fil-line')].map(l=>({
     filId:l.querySelector('.ifsel').value, grams:+l.querySelector('.ifg').value||0
   })).filter(x=>x.filId||x.grams);
-  const obj={
+  return {
     id: iid||id(),
     date: document.getElementById('im_date').value||todayISO(),
     name: document.getElementById('im_name').value.trim()||'Sin nombre',
@@ -1754,9 +1758,44 @@ function saveImpresion(iid){
     delivered: !!document.querySelector('#im_deliv button.on[data-v="1"]'),
     notes: document.getElementById('im_notes').value.trim()
   };
+}
+
+function saveImpresion(iid){
+  const obj=readImpForm(iid);
   if(iid){const i=data.impresiones.findIndex(x=>x.id===iid); if(i>-1) data.impresiones[i]=obj; else data.impresiones.push(obj);}
   else data.impresiones.push(obj);
   closeSheet(); persist(); renderRegistro(); toast(iid?'Impresión actualizada':'Impresión registrada');
+}
+
+// Registra la impresión y abre la calculadora con sus datos, como figura nueva.
+function impToCalc(iid){
+  const obj=readImpForm(iid);
+  const i=data.impresiones.findIndex(x=>x.id===obj.id);
+  if(i>-1) data.impresiones[i]=obj; else data.impresiones.push(obj);
+  persist(); renderRegistro();
+
+  resetCalc();
+  editingFigureId=null;
+  document.getElementById('c_name').value = obj.name==='Sin nombre' ? '' : obj.name;
+  document.getElementById('c_qty').value = Math.max(1,Math.floor(+obj.qty||1));
+  document.getElementById('c_h').value = obj.timeH||0;
+  document.getElementById('c_m').value = obj.timeM||0;
+  document.getElementById('c_labor').value = obj.laborMin||0;
+  document.getElementById('c_nozzle').value = obj.nozzle||'0.4';
+  document.getElementById('c_layerH').value = obj.layerH||0.2;
+  document.getElementById('c_infill').value = (obj.infill!=null?obj.infill:15);
+  document.getElementById('c_support').value = obj.support||'Sin soporte';
+  const ps=document.getElementById('c_printer');
+  if(ps && [...ps.options].some(o=>o.value===obj.printerId)) ps.value=obj.printerId;
+  const fw=document.getElementById('c_filWrap'); fw.innerHTML='';
+  (obj.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
+  if(!fw.querySelector('.fil-line')) addFilLine();
+  calcPhotos=(obj.photos||[]).slice(); renderCalcPhotos();
+
+  closeSheet();
+  go('calc');
+  syncWheels(); calc();
+  toast('Datos en la calculadora — ajusta el precio y guarda la figura');
 }
 function delImpresion(iid){
   const idx=data.impresiones.findIndex(x=>x.id===iid);
@@ -2040,8 +2079,13 @@ function renderPhotoStrip(containerId, ids, onChange){
     + (ids.length<PHOTO_MAX ? `<button type="button" class="photo-add">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Foto</button>` : '');
   el.querySelectorAll('.rm').forEach(b=>b.onclick=()=>{
-    deleteImageRemote(b.dataset.id);
-    onChange(ids.filter(x=>x!==b.dataset.id));
+    const rid=b.dataset.id;
+    // only wipe the bytes if nothing else still points at this image
+    const usedElsewhere =
+      (data.figures||[]).some(f=>f.id!==editingFigureId && (f.photos||[]).includes(rid)) ||
+      (data.impresiones||[]).some(i=>(i.photos||[]).includes(rid));
+    if(!usedElsewhere) deleteImageRemote(rid);
+    onChange(ids.filter(x=>x!==rid));
   });
   const add=el.querySelector('.photo-add');
   if(add) add.onclick=()=> pickPhoto(async file=>{
