@@ -497,7 +497,7 @@
 <!-- ============ REGISTRO DE IMPRESIONES ============ -->
 <section class="view" id="v-registro">
   <div class="wrap">
-    <div class="section-label" id="reg_monthLabel">Este mes</div>
+    <div class="section-label" id="reg_monthLabel">Total registrado</div>
     <div class="statgrid" id="reg_stats"></div>
     <div style="padding:12px 0"><button class="btn block" onclick="openImpresion()">+ Registrar impresión</button></div>
     <div class="section-label">Historial</div>
@@ -1678,9 +1678,7 @@ function renderRegistro(){
   openSwipe=null;
   const imps=Array.isArray(data.impresiones)?data.impresiones:(data.impresiones=[]);
   const list=imps.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(b.id).localeCompare(String(a.id)));
-  const nowKey=todayISO().slice(0,7);
-  const month=list.filter(im=>(im.date||'').slice(0,7)===nowKey);
-  const sum=month.reduce((s,im)=>{
+  const sum=list.reduce((s,im)=>{
     const q=+im.qty||1;
     s.n++; s.g+=impGrams(im)*q; s.h+=impHours(im);
     s.cost+=(+im.cost||0);
@@ -1689,7 +1687,7 @@ function renderRegistro(){
     return s;
   },{n:0,g:0,h:0,cost:0,fail:0,reprint:0});
 
-  document.getElementById('reg_monthLabel').textContent='Este mes · '+monthTitle(nowKey);
+  document.getElementById('reg_monthLabel').textContent='Total registrado';
   document.getElementById('reg_stats').innerHTML=`
     <div class="stat"><div class="n">${sum.n}</div><div class="k">impresiones</div></div>
     <div class="stat"><div class="n">${Math.round(sum.g)}</div><div class="k">gramos</div></div>
