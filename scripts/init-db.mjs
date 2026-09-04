@@ -24,6 +24,9 @@ const statements = [
      created_at      timestamptz NOT NULL DEFAULT now()
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx ON users (lower(username))`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret text`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_recovery_codes jsonb`,
   `CREATE TABLE IF NOT EXISTS sessions (
      token_hash text PRIMARY KEY,
      user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -64,6 +67,14 @@ const statements = [
      PRIMARY KEY (user_id, dedup_key)
    )`,
   `CREATE INDEX IF NOT EXISTS payment_reminders_due_idx ON payment_reminders_sent (due_date)`,
+  `CREATE TABLE IF NOT EXISTS mfa_challenges (
+     token_hash text PRIMARY KEY,
+     user_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     attempts   integer NOT NULL DEFAULT 0,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     expires_at timestamptz NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS mfa_challenges_expires_idx ON mfa_challenges (expires_at)`,
 ];
 
 try {

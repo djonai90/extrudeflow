@@ -9,6 +9,7 @@
   "scripts": {
     "init-db": "node scripts/init-db.mjs",
     "create-admin": "node scripts/create-admin.mjs",
+    "disable-totp": "node scripts/disable-totp.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {

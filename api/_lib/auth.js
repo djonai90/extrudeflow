@@ -8,7 +8,7 @@ const COOKIE = 'ef_session';
 export const SESSION_DAYS = 30;
 const SESSION_MS = SESSION_DAYS * 86400 * 1000;
 
-function tokenHash(token) {
+export function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
@@ -35,7 +35,7 @@ export async function createSession(res, userId) {
   const expires = new Date(Date.now() + SESSION_MS);
   await sql`
     INSERT INTO sessions (token_hash, user_id, expires_at)
-    VALUES (${tokenHash(token)}, ${userId}, ${expires.toISOString()})
+    VALUES (${hashToken(token)}, ${userId}, ${expires.toISOString()})
   `;
   setCookie(res, token, SESSION_DAYS * 86400);
 }
@@ -53,13 +53,13 @@ export async function getUser(req, res) {
     SELECT u.id, u.username, u.role, u.active, s.expires_at
     FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.token_hash = ${tokenHash(token)}
+    WHERE s.token_hash = ${hashToken(token)}
   `;
   const row = rows[0];
   if (!row) return null;
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
-    await sql`DELETE FROM sessions WHERE token_hash = ${tokenHash(token)}`;
+    await sql`DELETE FROM sessions WHERE token_hash = ${hashToken(token)}`;
     return null;
   }
   if (!row.active) return null;
@@ -67,7 +67,7 @@ export async function getUser(req, res) {
   // Sliding expiration: only write once a day to avoid a DB write per request.
   if (new Date(row.expires_at).getTime() - Date.now() < SESSION_MS - 86400 * 1000) {
     const newExpires = new Date(Date.now() + SESSION_MS);
-    await sql`UPDATE sessions SET expires_at = ${newExpires.toISOString()} WHERE token_hash = ${tokenHash(token)}`;
+    await sql`UPDATE sessions SET expires_at = ${newExpires.toISOString()} WHERE token_hash = ${hashToken(token)}`;
     if (res) setCookie(res, token, SESSION_DAYS * 86400);
   }
 
@@ -76,7 +76,7 @@ export async function getUser(req, res) {
 
 export async function destroySession(req) {
   const token = parseCookies(req)[COOKIE];
-  if (token) await sql`DELETE FROM sessions WHERE token_hash = ${tokenHash(token)}`;
+  if (token) await sql`DELETE FROM sessions WHERE token_hash = ${hashToken(token)}`;
 }
 
 // Guards. Return the user, or null after having sent the error response.

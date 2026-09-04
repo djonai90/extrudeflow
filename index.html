@@ -352,12 +352,19 @@
     <h1>Extrude<span class="dot">Flow</span></h1>
     <p class="tag">Inicia sesión para ver tus cotizaciones.</p>
     <form onsubmit="doLogin(event)">
-      <label for="lg_user">Usuario</label>
-      <input id="lg_user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
-      <label for="lg_pass">Contraseña</label>
-      <input id="lg_pass" type="password" autocomplete="current-password">
+      <div id="lg_step1">
+        <label for="lg_user">Usuario</label>
+        <input id="lg_user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+        <label for="lg_pass">Contraseña</label>
+        <input id="lg_pass" type="password" autocomplete="current-password">
+      </div>
+      <div id="lg_step2" style="display:none">
+        <label for="lg_code">Código de verificación</label>
+        <input id="lg_code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 dígitos o código de recuperación">
+      </div>
       <div class="msg" id="lg_msg"></div>
       <button class="btn block" id="lg_btn" type="submit">Entrar</button>
+      <p class="tag" id="lg_back" style="display:none;text-align:center;margin:12px 0 0"><a href="#" onclick="cancelMfaStep();return false;" style="color:var(--accent)">‹ Volver</a></p>
     </form>
   </div>
 </div>
@@ -592,6 +599,9 @@
       <div class="row" style="cursor:pointer" onclick="changeMyPassword()">
         <div class="lbl">Cambiar mi contraseña</div><div class="right chev">›</div>
       </div>
+      <div class="row" id="totpRow" style="display:none;cursor:pointer" onclick="openTotpSheet()">
+        <div class="lbl">Verificación en dos pasos <small id="totpStatus">—</small></div><div class="right chev">›</div>
+      </div>
       <a class="row" id="adminLink" href="/admin" style="display:none;text-decoration:none;color:inherit">
         <div class="lbl">Panel de administrador</div><div class="right chev">›</div>
       </a>
@@ -782,24 +792,57 @@ const DEFAULT_SETTINGS = { cur:'$', kwh:2.8, machineHour:0, laborHour:0, biz:'',
   await startApp();
 })();
 
+let mfaTicket=null;
+function cancelMfaStep(){
+  mfaTicket=null;
+  document.getElementById('lg_step2').style.display='none';
+  document.getElementById('lg_back').style.display='none';
+  document.getElementById('lg_step1').style.display='';
+  document.getElementById('lg_code').value='';
+  document.getElementById('lg_msg').textContent='';
+  document.getElementById('lg_btn').textContent='Entrar';
+}
 async function doLogin(ev){
   if(ev) ev.preventDefault();
-  const u=document.getElementById('lg_user').value.trim();
-  const p=document.getElementById('lg_pass').value;
   const btn=document.getElementById('lg_btn');
   const msg=document.getElementById('lg_msg');
   msg.textContent='';
-  if(!u||!p){ msg.textContent='Escribe usuario y contraseña.'; return; }
-  btn.disabled=true; btn.textContent='Entrando…';
+  btn.disabled=true;
   try{
-    currentUser = await api('/auth/login', {method:'POST', body:{username:u, password:p}});
+    if(mfaTicket){
+      const code=document.getElementById('lg_code').value.trim();
+      if(!code){ msg.textContent='Escribe el código.'; return; }
+      btn.textContent='Verificando…';
+      currentUser = await api('/auth/login', {method:'POST', body:{ticket:mfaTicket, code}});
+      mfaTicket=null;
+      document.getElementById('lg_code').value='';
+      document.getElementById('login').classList.remove('show');
+      await startApp();
+      return;
+    }
+    const u=document.getElementById('lg_user').value.trim();
+    const p=document.getElementById('lg_pass').value;
+    if(!u||!p){ msg.textContent='Escribe usuario y contraseña.'; return; }
+    btn.textContent='Entrando…';
+    const r=await api('/auth/login', {method:'POST', body:{username:u, password:p}});
+    if(r && r.mfaRequired){
+      mfaTicket=r.ticket;
+      document.getElementById('lg_pass').value='';
+      document.getElementById('lg_step1').style.display='none';
+      document.getElementById('lg_step2').style.display='';
+      document.getElementById('lg_back').style.display='';
+      btn.textContent='Verificar';
+      document.getElementById('lg_code').focus();
+      return;
+    }
+    currentUser = r;
     document.getElementById('lg_pass').value='';
     document.getElementById('login').classList.remove('show');
     await startApp();
   }catch(e){
     msg.textContent = e.message || 'No se pudo iniciar sesión.';
   }finally{
-    btn.disabled=false; btn.textContent='Entrar';
+    btn.disabled=false; btn.textContent = mfaTicket ? 'Verificar' : 'Entrar';
   }
 }
 
@@ -848,6 +891,8 @@ async function startApp(){
   if(adminLink) adminLink.style.display = isAdmin ? '' : 'none';
   const navBancos=document.getElementById('navBancos');
   if(navBancos) navBancos.style.display = isAdmin ? '' : 'none';
+  const totpRow=document.getElementById('totpRow');
+  if(totpRow){ totpRow.style.display = isAdmin ? '' : 'none'; if(isAdmin) refreshTotpStatus(); }
 
   document.body.classList.add('authed');
   refreshCurrencyLabels();
@@ -871,6 +916,83 @@ async function changeMyPassword(){
     await api('/auth/change-password', {method:'POST', body:{current, next}});
     toast('Contraseña actualizada');
   }catch(e){ toast(e.message||'No se pudo'); }
+}
+
+/* ---------------- verificación en dos pasos (solo admin) ---------------- */
+async function refreshTotpStatus(){
+  const el=document.getElementById('totpStatus'); if(!el) return;
+  try{
+    const r=await api('/auth/totp');
+    el.textContent = r.enabled ? 'Activada' : 'Desactivada';
+  }catch(e){}
+}
+async function openTotpSheet(){
+  let enabled=false;
+  try{ enabled=(await api('/auth/totp')).enabled; }catch(e){ toast(e.message||'No se pudo consultar'); return; }
+  if(enabled){
+    openSheet('Verificación en dos pasos', `
+      <div class="wrap">
+        <p class="hint">Tu cuenta ya pide un código de Google Authenticator (o cualquier app compatible) al iniciar sesión.</p>
+        <div class="card"><div class="row"><input class="wide" id="totp_code" inputmode="numeric" maxlength="11" placeholder="Código de 6 dígitos o de recuperación"></div></div>
+        <div class="save-strip"><button class="btn danger block" onclick="disableTotp()">Desactivar verificación en dos pasos</button></div>
+      </div>`);
+  } else {
+    startTotpSetup();
+  }
+}
+async function startTotpSetup(){
+  let r;
+  try{ r=await api('/auth/totp',{method:'POST', body:{action:'setup'}}); }
+  catch(e){ toast(e.message||'No se pudo generar la clave'); return; }
+  const grouped=(r.secret.match(/.{1,4}/g)||[r.secret]).join(' ');
+  openSheet('Configurar verificación en dos pasos', `
+    <div class="wrap">
+      <p class="hint">En Google Authenticator: “+” → “Ingresar una clave de configuración”. Cuenta: <b>ExtrudeFlow:${esc(currentUser.username)}</b> · Tipo: basada en tiempo.</p>
+      <div class="section-label">Clave</div>
+      <div class="card">
+        <div class="row" style="cursor:pointer" onclick="copyTotpSecret('${r.secret}')">
+          <div class="lbl" style="font-family:monospace;font-size:16px;letter-spacing:1px">${grouped}</div>
+          <div class="right chev">copiar</div>
+        </div>
+      </div>
+      <p class="hint">Cuando la app empiece a mostrar códigos, escribe uno aquí para activarla:</p>
+      <div class="card"><div class="row"><input class="wide" id="totp_confirm_code" inputmode="numeric" maxlength="6" placeholder="Código de 6 dígitos"></div></div>
+      <div class="save-strip"><button class="btn block" onclick="confirmTotp()">Activar</button></div>
+    </div>`);
+}
+function copyTotpSecret(secret){
+  (navigator.clipboard?.writeText(secret)||Promise.reject()).then(()=>toast('Clave copiada')).catch(()=>toast('No se pudo copiar'));
+}
+async function confirmTotp(){
+  const code=document.getElementById('totp_confirm_code').value.trim();
+  if(!/^\d{6}$/.test(code)){ toast('Escribe el código de 6 dígitos'); return; }
+  try{
+    const r=await api('/auth/totp',{method:'POST', body:{action:'confirm', code}});
+    showRecoveryCodes(r.recoveryCodes);
+  }catch(e){ toast(e.message||'Código incorrecto'); }
+}
+function showRecoveryCodes(codes){
+  openSheet('Códigos de recuperación', `
+    <div class="wrap">
+      <p class="hint">Guárdalos en un lugar seguro. Cada uno funciona una sola vez para entrar si pierdes el teléfono. No se vuelven a mostrar.</p>
+      <div class="card">${codes.map(c=>`<div class="row"><div class="lbl" style="font-family:monospace;font-size:16px">${esc(c)}</div></div>`).join('')}</div>
+      <div class="save-strip" style="display:flex;gap:10px">
+        <button class="btn ghost sm" onclick='copyRecoveryCodes(${JSON.stringify(codes)})'>Copiar todos</button>
+        <button class="btn block" onclick="closeSheet();refreshTotpStatus();toast('Verificación en dos pasos activada')">Ya los guardé</button>
+      </div>
+    </div>`);
+}
+function copyRecoveryCodes(codes){
+  (navigator.clipboard?.writeText(codes.join('\n'))||Promise.reject()).then(()=>toast('Códigos copiados')).catch(()=>toast('No se pudo copiar'));
+}
+async function disableTotp(){
+  const code=document.getElementById('totp_code').value.trim();
+  if(!code){ toast('Escribe un código'); return; }
+  if(!confirm('¿Desactivar la verificación en dos pasos de tu cuenta?')) return;
+  try{
+    await api('/auth/totp',{method:'POST', body:{action:'disable', code}});
+    closeSheet(); refreshTotpStatus(); toast('Verificación en dos pasos desactivada');
+  }catch(e){ toast(e.message||'Código incorrecto'); }
 }
 
 function persist(){
