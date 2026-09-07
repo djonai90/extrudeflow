@@ -1680,16 +1680,16 @@ function renderRegistro(){
   const list=imps.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')||String(b.id).localeCompare(String(a.id)));
   const sum=list.reduce((s,im)=>{
     const q=+im.qty||1;
-    s.n++; s.g+=impGrams(im)*q; s.h+=impHours(im);
+    s.pz+=q; s.g+=impGrams(im); s.h+=impHours(im);
     s.cost+=(+im.cost||0);
     if(im.status==='fail') s.fail++;
     if(im.status==='reprint') s.reprint++;
     return s;
-  },{n:0,g:0,h:0,cost:0,fail:0,reprint:0});
+  },{pz:0,g:0,h:0,cost:0,fail:0,reprint:0});
 
   document.getElementById('reg_monthLabel').textContent='Total registrado';
   document.getElementById('reg_stats').innerHTML=`
-    <div class="stat"><div class="n">${sum.n}</div><div class="k">impresiones</div></div>
+    <div class="stat"><div class="n">${sum.pz}</div><div class="k">piezas</div></div>
     <div class="stat"><div class="n">${Math.round(sum.g)}</div><div class="k">gramos</div></div>
     <div class="stat"><div class="n">${sum.h.toFixed(1)}</div><div class="k">horas</div></div>
     <div class="stat"><div class="n money">${money(sum.cost)}</div><div class="k">costo</div></div>
@@ -1757,7 +1757,7 @@ function openImpresion(iid){
       <div class="card">
         <div class="row"><input class="wide" id="im_name" placeholder="Nombre (ej. Llavero personalizado)" value="${esc(im.name)}"></div>
         <div class="row"><div class="lbl">Fecha</div><div class="right"><input type="date" id="im_date" value="${im.date}"></div></div>
-        <div class="row"><div class="lbl">Cantidad de piezas</div><div class="right"><input class="num" id="im_qty" type="number" min="1" value="${+im.qty||1}" style="width:64px"></div></div>
+        <div class="row"><div class="lbl">Cantidad de piezas <small>para el costo por pieza</small></div><div class="right"><input class="num" id="im_qty" type="number" min="1" value="${+im.qty||1}" style="width:64px"></div></div>
         <div class="row"><div class="lbl">Cliente <small>opcional</small></div><div class="right"><input id="im_client" placeholder="Nombre" value="${esc(im.client)}" style="width:150px"></div></div>
       </div>
 
@@ -1774,6 +1774,7 @@ function openImpresion(iid){
       </div>
       <div class="card" id="im_filWrap" style="margin-top:8px"></div>
       <div style="padding:8px 0"><button class="btn ghost sm" onclick="addImpFilLine()">+ Agregar filamento</button></div>
+      <p class="hint" style="margin:0 4px 4px">Pon los gramos, el tiempo y el trabajo manual <b>totales de la placa completa</b>. El costo por pieza se calcula dividiendo entre la cantidad.</p>
 
       <div class="section-label">Configuración de impresión</div>
       <div class="card">
@@ -1822,6 +1823,9 @@ function openImpresion(iid){
   updateImpCost();
 }
 
+// En el registro, gramos / tiempo / trabajo manual son los TOTALES del trabajo
+// (la placa completa). El costo del trabajo no se multiplica por la cantidad;
+// el costo por pieza es total / cantidad.
 function impComputeCost(){
   const g=idn=>document.getElementById(idn);
   const s=data.settings;
@@ -1833,13 +1837,13 @@ function impComputeCost(){
     const gr=+l.querySelector('.ifg').value||0;
     if(f) material+=gramCost(f)*gr;
   });
-  material*=qty;
   const p=data.printers.find(x=>x.id===g('im_printer').value);
   const watts=p?p.watts:0;
-  const elec=(watts/1000)*hours*qty*(s.kwh||0);
-  const machine=(s.machineHour||0)*hours*qty;
-  const labor=(s.laborHour||0)*((+g('im_labor').value||0)/60)*qty;
-  return { material, elec, machine, labor, total: material+elec+machine+labor };
+  const elec=(watts/1000)*hours*(s.kwh||0);
+  const machine=(s.machineHour||0)*hours;
+  const labor=(s.laborHour||0)*((+g('im_labor').value||0)/60);
+  const total=material+elec+machine+labor;
+  return { material, elec, machine, labor, total, qty, perPiece: total/qty };
 }
 function updateImpCost(){
   if(!document.getElementById('im_costVal')) return;
@@ -1850,6 +1854,7 @@ function updateImpCost(){
   if(r.elec>0)     parts.push('luz '+r.elec.toFixed(2));
   if(r.machine>0)  parts.push('máquina '+r.machine.toFixed(2));
   if(r.labor>0)    parts.push('manual '+r.labor.toFixed(2));
+  if(r.qty>1)      parts.push('→ '+money(r.perPiece)+'/pza');
   document.getElementById('im_costBreak').textContent=parts.join(' · ');
 }
 
@@ -1894,13 +1899,16 @@ function impToCalc(iid){
   if(i>-1) data.impresiones[i]=obj; else data.impresiones.push(obj);
   persist(); renderRegistro();
 
+  const q=Math.max(1,Math.floor(+obj.qty||1));
   resetCalc();
   editingFigureId=null;
   document.getElementById('c_name').value = obj.name==='Sin nombre' ? '' : obj.name;
-  document.getElementById('c_qty').value = Math.max(1,Math.floor(+obj.qty||1));
-  document.getElementById('c_h').value = obj.timeH||0;
-  document.getElementById('c_m').value = obj.timeM||0;
-  document.getElementById('c_labor').value = obj.laborMin||0;
+  document.getElementById('c_qty').value = q;
+  // el registro guarda totales de la placa; la calculadora trabaja por pieza
+  const perPieceMin = Math.round(((+obj.timeH||0)*60 + (+obj.timeM||0)) / q);
+  document.getElementById('c_h').value = Math.floor(perPieceMin/60);
+  document.getElementById('c_m').value = perPieceMin % 60;
+  document.getElementById('c_labor').value = Math.round((+obj.laborMin||0) / q);
   document.getElementById('c_nozzle').value = obj.nozzle||'0.4';
   document.getElementById('c_layerH').value = obj.layerH||0.2;
   document.getElementById('c_infill').value = (obj.infill!=null?obj.infill:15);
@@ -1908,7 +1916,7 @@ function impToCalc(iid){
   const ps=document.getElementById('c_printer');
   if(ps && [...ps.options].some(o=>o.value===obj.printerId)) ps.value=obj.printerId;
   const fw=document.getElementById('c_filWrap'); fw.innerHTML='';
-  (obj.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
+  (obj.fils||[]).forEach(x=>addFilLine(x.filId, x.grams ? Math.round((x.grams/q)*100)/100 : x.grams));
   if(!fw.querySelector('.fil-line')) addFilLine();
   calcPhotos=(obj.photos||[]).slice(); renderCalcPhotos();
 
