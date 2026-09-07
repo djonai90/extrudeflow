@@ -473,6 +473,10 @@
         <div class="lbl">Costos extra <small>empaque, envío — una vez</small></div>
         <div class="right"><input class="num" id="c_extra" type="number" min="0" value="0" style="width:64px"><span class="unit" id="curExtra">$</span></div>
       </div>
+      <div class="row">
+        <div class="lbl">Ajuste al total <small>suma o resta directa al precio final, sin % ni IVA</small></div>
+        <div class="right"><input class="num" id="c_adjust" type="number" step="1" value="0" style="width:76px"><span class="unit" id="curAdjust">$</span></div>
+      </div>
     </div>
 
     <div class="section-label">Resultado</div>
@@ -1002,7 +1006,7 @@ function persist(){
 
 function refreshCurrencyLabels(){
   const c=cur();
-  ['curExtra','curKwh','curMachineHour','curLaborHour'].forEach(idn=>{const e=document.getElementById(idn);if(e)e.textContent=c});
+  ['curExtra','curAdjust','curKwh','curMachineHour','curLaborHour'].forEach(idn=>{const e=document.getElementById(idn);if(e)e.textContent=c});
 }
 
 /* ---------------- navigation ---------------- */
@@ -1272,7 +1276,7 @@ function mountWheels(hWheelId, mWheelId, hInputId, mInputId, maxH){
 function bindCalc(){
   initTimeWheels();
   renderCalcPhotos();
-  ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_nozzle','c_layerH','c_infill','c_support','c_merma','c_margin','c_labor','c_extra'].forEach(idn=>{
+  ['c_name','c_type','c_qty','c_h','c_m','c_printer','c_nozzle','c_layerH','c_infill','c_support','c_merma','c_margin','c_labor','c_extra','c_adjust'].forEach(idn=>{
     const e=document.getElementById(idn); if(e) e.oninput=e.onchange=calc;
   });
   calc();
@@ -1312,8 +1316,11 @@ function computeCost(){
   sale+=iva;
   // round
   if(s.round>0){ sale=Math.ceil(sale/s.round)*s.round; }
+  // ajuste final: suma/resta directa, después de todo (%, IVA, redondeo)
+  const adjust=+document.getElementById('c_adjust').value||0;
+  sale+=adjust;
   const perPiece = qty>1 ? sale/qty : null;
-  return {qty,hours,material,merma,elec,machine,labor,extra,total,margin,marginPct,iva,sale,perPiece};
+  return {qty,hours,material,merma,elec,machine,labor,extra,total,margin,marginPct,iva,adjust,sale,perPiece};
 }
 
 function calc(){
@@ -1331,6 +1338,7 @@ function calc(){
   html+=`<div class="row total"><div class="lbl">Costo total${r.qty>1?' · '+r.qty+' pz':''}</div><div class="amount">${money(r.total)}</div></div>`;
   html+=`<div class="row"><div class="lbl muted">Margen (${r.marginPct}%)</div><div class="amount muted">${money(r.margin)}</div></div>`;
   if(r.iva>0) html+=`<div class="row"><div class="lbl muted">IVA (${s.iva}%)</div><div class="amount muted">${money(r.iva)}</div></div>`;
+  if(r.adjust!==0) html+=`<div class="row"><div class="lbl muted">Ajuste</div><div class="amount muted">${r.adjust<0?'− ':'+ '}${money(Math.abs(r.adjust))}</div></div>`;
   html+=`<div class="row sale"><div class="lbl">Precio de venta</div><div class="amount">${money(r.sale)}</div></div>`;
   if(r.perPiece!=null) html+=`<div class="row"><div class="lbl muted">Precio por pieza</div><div class="amount muted">${money(r.perPiece)}</div></div>`;
   document.getElementById('c_result').innerHTML=html;
@@ -1349,6 +1357,7 @@ function resetCalc(){
   document.getElementById('c_h').value=1;document.getElementById('c_m').value=0;
   document.getElementById('c_merma').value=5;document.getElementById('c_margin').value=60;
   document.getElementById('c_labor').value=0;document.getElementById('c_extra').value=0;
+  document.getElementById('c_adjust').value=0;
   document.getElementById('c_filWrap').innerHTML='';addFilLine();
   calcPhotos=[]; renderCalcPhotos();
   syncWheels();
@@ -1376,6 +1385,7 @@ function saveFigure(){
     margin:+document.getElementById('c_margin').value||0,
     labor:+document.getElementById('c_labor').value||0,
     extra:+document.getElementById('c_extra').value||0,
+    adjust:+document.getElementById('c_adjust').value||0,
     fils,
     photos:calcPhotos.slice(),
     snapshot:{total:r.total,sale:r.sale,perPiece:r.perPiece}
@@ -1405,6 +1415,7 @@ function loadFigure(fid){
   document.getElementById('c_margin').value=f.margin;
   document.getElementById('c_labor').value=f.labor||0;
   document.getElementById('c_extra').value=f.extra||0;
+  document.getElementById('c_adjust').value=f.adjust||0;
   const ps=document.getElementById('c_printer'); if([...ps.options].some(o=>o.value===f.printerId)) ps.value=f.printerId;
   document.getElementById('c_filWrap').innerHTML='';
   (f.fils||[]).forEach(x=>addFilLine(x.filId,x.grams));
