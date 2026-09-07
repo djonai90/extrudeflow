@@ -78,9 +78,13 @@ export default async function handler(req, res) {
 
     const result = await sendToUser(row.user_id, { title, body, url: '/', tag: 'ef-pay-reminder' });
     summary.pushes += result.sent;
-    if (result.sent > 0) summary.notifiedUsers++;
 
-    // marca como enviado aunque no haya suscripciones activas, para no reintentar cada día
+    // Sólo marca como enviado si de verdad salió al menos un push. Si no hay
+    // suscripción activa todavía, se reintenta en la siguiente corrida mientras
+    // el vencimiento siga dentro de la ventana de 1–2 días.
+    if (result.sent === 0) continue;
+    summary.notifiedUsers++;
+
     for (const [key, it] of dueMap) {
       await sql`
         INSERT INTO payment_reminders_sent (user_id, dedup_key, due_date)
