@@ -503,10 +503,11 @@
   <div class="wrap">
     <div class="section-label" id="reg_monthLabel">Total registrado</div>
     <div class="statgrid" id="reg_stats"></div>
+    <div id="reg_byColor" style="margin-top:14px"></div>
     <div style="padding:12px 0"><button class="btn block" onclick="openImpresion()">+ Registrar impresión</button></div>
     <div class="section-label">Historial</div>
     <div class="card" id="reg_list"></div>
-    <p class="hint">Tu bitácora: qué imprimiste, con qué config, cuánto tardó y cómo salió. El resumen de arriba es del mes en curso.</p>
+    <p class="hint">Tu bitácora: qué imprimiste, con qué config, cuánto tardó y cómo salió. El resumen de arriba es de todo lo registrado.</p>
   </div>
 </section>
 
@@ -1706,6 +1707,25 @@ function renderRegistro(){
     <div class="stat"><div class="n money">${money(sum.cost)}</div><div class="k">costo</div></div>
     <div class="stat"><div class="n">${sum.fail}</div><div class="k">fallidas</div></div>
     <div class="stat"><div class="n">${sum.reprint}</div><div class="k">reimpresiones</div></div>`;
+
+  // gramos totales separados por filamento / color
+  const byFil=new Map();
+  list.forEach(im=>(im.fils||[]).forEach(x=>{
+    const g=+x.grams||0; if(!g) return;
+    byFil.set(x.filId||'__unknown', (byFil.get(x.filId||'__unknown')||0)+g);
+  }));
+  const bcEl=document.getElementById('reg_byColor');
+  if(byFil.size){
+    const rows=[...byFil.entries()].map(([fid,g])=>{
+      const f=data.filaments.find(x=>x.id===fid);
+      return {color:f?f.color:'#697069', name:f?f.name:'Filamento eliminado', g};
+    }).sort((a,b)=>b.g-a.g);
+    bcEl.innerHTML=`<div class="section-label">Gramos por filamento</div><div class="card">`+
+      rows.map(r=>`<div class="row"><span class="swatch" style="background:${esc(r.color||'#697069')}"></span><div class="lbl">${esc(r.name)}</div><div class="right"><b>${Math.round(r.g)}</b> g</div></div>`).join('')+
+      `</div>`;
+  } else {
+    bcEl.innerHTML='';
+  }
 
   const el=document.getElementById('reg_list');
   if(!list.length){el.innerHTML='<div class="empty">Aún no registras impresiones.<br>Toca “Registrar impresión”.</div>';return}
